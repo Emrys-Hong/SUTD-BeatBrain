@@ -1,4 +1,5 @@
 import os
+import re
 import glob
 import time
 import numpy as np
@@ -11,23 +12,25 @@ import joblib
 from .defaults import *
 
 
-def walk_dir(root):
+def walk_dir(root, depth=WALK_DEPTH):
+    all_dirs = [root]
     dirs = [root]
-    # while we has dirs to scan
     while len(dirs):
         next_dirs = []
         for parent in dirs:
-            # scan each dir
             for f in os.listdir(parent):
-                # if there is a dir, then save for next iter
-                # if it  is a file then yield it (we'll return later)
                 ff = os.path.join(parent, f)
                 if os.path.isdir(ff):
                     next_dirs.append(ff)
-                else:
-                    yield ff
-        # once we've done all the current dirs then we set up the next iter as the child dirs from the current iter.
+                    all_dirs.append(ff)
         dirs = next_dirs
+    all_dirs = [d for d in all_dirs if d.count(os.path.sep) <= depth]
+    return all_dirs
+
+
+def list_files(root):
+    files = [os.path.join(root, f) for f in os.listdir(root) if os.path.isfile(os.path.join(root, f))]
+    return files
 
 
 def load_audio(path, debug=False, **kwargs):
@@ -38,7 +41,7 @@ def load_audio(path, debug=False, **kwargs):
     return audio, sr
 
 
-def save_audio(audio, path, sr=SAMPLE_RATE, norm=NORMALIZE_AUDIO, fmt='wav', debug=False, **kwargs):
+def save_audio(audio, path, sr=SAMPLE_RATE, norm=NORMALIZE_AUDIO, fmt='wav', debug=False):
     if fmt != 'wav':
         raise NotImplementedError("Only .wav is currently supported.")
     rosa.output.write_wav(path, audio, sr, norm=norm)
@@ -65,7 +68,7 @@ def spec_to_chunks(spec, pixels_per_chunk=128, truncate=True, debug=False):
     remainder = spec.shape[1] % pixels_per_chunk
     if truncate:
         last_index = spec.shape[1] - remainder
-        spec_chunkable = spec[..., :last_index]
+        spec_chunkable = spec[:, :last_index]
     else:
         spec_chunkable = np.pad(spec, ((0, 0), (0, pixels_per_chunk - remainder)), mode='constant')
     if debug:
@@ -89,19 +92,30 @@ def save_chunks(chunks, output_dir, basename=None, debug=False):
     if debug:
         print(f"Saving {len(chunks)} chunks to '{output_dir}'...")
     for i, chunk in enumerate(chunks):
-        img = Image.fromarray(chunk[::-1], mode='F')
-        path = os.path.join(output_dir, f"{basename}_{i}.tiff")
-        img.save(path)
+        path = os.path.join(output_dir, f"{basename}_{i + 1}.tiff")
+        save_chunk(chunk, path)
     if debug:
         print(f"Saved {len(chunks)} chunks in {time.time() - start:.2f}s")
 
 
-def load_images(path, depth=WALK_DEPTH):
-    path = os.path.abspath(path)
-    if os.path.isfile(path):
-        return Image.open(path)
-    elif os.path.isdir(path):
-        files = walk_dir(path, depth=depth)
+def save_chunk(chunk, path, mode=IMAGE_MODE, remove_top_row=IMAGE_DROP_TOP, flip_vertical=IMAGE_FLIP):
+    if remove_top_row:
+        chunk = chunk[:-1]
+    if flip_vertical:
+        chunk = chunk[::-1]
+    image = Image.fromarray(chunk, mode=mode)
+    image.save(path)
+
+
+def load_chunk(path, restore_top_row=IMAGE_DROP_TOP, flip_vertical=IMAGE_FLIP):
+    chunk = np.asarray(Image.open(path))
+    if flip_vertical:
+        chunk = chunk[::-1]
+    if restore_top_row:
+        restored = np.zeros((chunk.shape[0] + 1, *chunk.shape[1:]), dtype=chunk.dtype)
+        restored[:chunk.shape[0]] = chunk
+        chunk = restored
+    return chunk
 
 
 def convert_audio_to_images(path, output_dir, sr=SAMPLE_RATE, start=AUDIO_START, duration=AUDIO_DURATION,
@@ -114,16 +128,16 @@ def convert_audio_to_images(path, output_dir, sr=SAMPLE_RATE, start=AUDIO_START,
     return chunks
 
 
-def convert_images_to_audio(path, name_format=IMAGE_NAME_FORMAT,
-                            concatenate=CONCATENATE_RECON, n_iter=GRIFFINLIM_ITER, n_fft=N_FFT,
-                            hop_length=HOP_LENGTH, debug=False):
+def convert_images_to_audio(paths, output, n_iter=GRIFFINLIM_ITER, n_fft=N_FFT,
+                            hop_length=HOP_LENGTH, sr=SAMPLE_RATE, norm=NORMALIZE_AUDIO,
+                            fmt=AUDIO_FORMAT, debug=False):
     start = time.time()
-    files = natsorted(glob.glob(os.path.join(path, name_format)))
-    chunks = [np.asarray(Image.open(file))[::-1] for file in files]
+    paths = natsorted(paths)
+    chunks = [load_chunk(path) for path in paths]
     recon = [griffinlim(chunk, n_iter=n_iter, win_length=n_fft,
                         hop_length=hop_length, debug=False) for chunk in chunks]
-    if concatenate:
-        recon = np.concatenate(recon)
+    recon = np.concatenate(recon)
+    save_audio(recon, output, sr=sr, norm=norm, fmt=fmt, debug=debug)
     if debug:
-        print(f"Reconstructed {len(files)} chunks in {time.time() - start:.2f}s")
+        print(f"Reconstructed {len(paths)} chunks in {time.time() - start:.2f}s")
     return recon

@@ -43,8 +43,8 @@ def audio_to_images(path, output_dir, sample_rate=SAMPLE_RATE, start=AUDIO_START
                    f"{Fore.YELLOW}'{path}'{Fore.RESET} to spectrogram chunk images...")
     else:
         raise click.ClickException(f"{Fore.LIGHTRED_EX}No such file or directory: {Fore.YELLOW}'{path}'{Fore.RESET}")
-    click.confirm(f"This operation will output {len(files)} set(s) of spectrogram chunks to "
-                  f"{Fore.YELLOW}'{output_dir}'{Fore.RESET}. Confirm?\n", abort=True)
+    # click.confirm(f"This operation will output {len(files)} set(s) of spectrogram chunks to "
+    #               f"{Fore.YELLOW}'{output_dir}'{Fore.RESET}. Confirm?\n", abort=True)
     with tqdm(files) as bar:
         for file in bar:
             utils.convert_audio_to_images(file, output_dir, sr=sample_rate, start=start, duration=duration,
@@ -60,14 +60,28 @@ def audio_to_images(path, output_dir, sample_rate=SAMPLE_RATE, start=AUDIO_START
 @click.option('-d', '--depth',
               help='How many subdirectories deep to search for images (1 = root only). '
                    'Ignored if input is a single image.', default=WALK_DEPTH)
-@click.option('-n', '--nameformat', 'name_format', default=IMAGE_NAME_FORMAT)
 @click.option('--iter', '--griffinlimiter', 'n_iter', default=GRIFFINLIM_ITER)
 @click.option('--hopsize', 'hop_length', default=HOP_LENGTH)
 @click.option('--fftsize', 'n_fft', default=N_FFT)
-def images_to_audio(path, output_dir, depth=WALK_DEPTH, name_format=IMAGE_NAME_FORMAT, n_iter=GRIFFINLIM_ITER,
-                    hop_length=HOP_LENGTH, n_fft=N_FFT, debug=False):
-    files = list(utils.walk_dir(path))
-    print(files)
+def images_to_audio(path, output_dir, depth=WALK_DEPTH, n_iter=GRIFFINLIM_ITER,
+                    hop_length=HOP_LENGTH, n_fft=N_FFT, sr=SAMPLE_RATE, norm=NORMALIZE_AUDIO,
+                    fmt=AUDIO_FORMAT, debug=False):
     if os.path.isfile(path):
         click.echo(f"Reconstructing audio from single image: {Fore.YELLOW}'{path}'{Fore.RESET}")
-    # utils.convert_images_to_audio(path, name_format=name_format, n_iter=n_iter, hop_length=hop_length, n_fft=n_fft, debug=debug)
+        output = os.path.splitext(os.path.basename(path))[0]
+        output = output[:output.rfind('_')]
+        output = os.path.join(output_dir, f"{output}.{fmt}")
+        recon = utils.convert_images_to_audio([path], output, n_iter=n_iter, hop_length=hop_length,
+                                              n_fft=n_fft, sr=sr, norm=norm, fmt=fmt, debug=debug)
+    elif os.path.isdir(path):
+        directories = utils.walk_dir(path, depth=depth)
+        print(directories)
+        for directory in directories:
+            print(directory)
+            files = utils.list_files(directory)
+            print(files)
+            if files:
+                output = os.path.join(output_dir, f"{os.path.basename(directory)}.{fmt}")
+                recon = utils.convert_images_to_audio(files, output, n_iter=n_iter, hop_length=hop_length,
+                                                      n_fft=n_fft, sr=sr, norm=norm, fmt=fmt, debug=debug)
+        click.echo(f"Reconstructing audio from multiple images: {Fore.YELLOW}'{path}'{Fore.RESET}")
