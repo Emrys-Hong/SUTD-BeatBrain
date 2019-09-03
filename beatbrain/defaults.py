@@ -2,6 +2,7 @@
 A convenient global store for application default values.
 This is *not* a config file - more on what to do about that coming here soon.
 """
+import os
 
 SAMPLE_RATE = 32768
 AUDIO_START = 0
@@ -19,3 +20,4 @@ IMAGE_DROP_TOP = True
 IMAGE_FLIP = True
 IMAGE_MODE = 'F'
 IMAGE_CONCATENATE = False
+NUM_JOBS = os.cpu_count() - 1

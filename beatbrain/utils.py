@@ -7,7 +7,6 @@ import librosa as rosa
 import librosa.display
 from PIL import Image
 from natsort import natsorted
-from joblib import Parallel, delayed
 
 from .defaults import *
 
@@ -29,7 +28,7 @@ def walk_dir(path, depth=WALK_DEPTH):
                     next_dirs.append(ff)
                     all_dirs.append(ff)
         dirs = next_dirs
-    all_dirs = [d for d in all_dirs if d.count(os.path.sep) <= depth]
+    all_dirs = [d for d in all_dirs if os.path.relpath(d, start=path).count(os.path.sep) <= depth]
     return all_dirs
 
 
@@ -137,19 +136,21 @@ def load_chunks(paths, restore_top_row=IMAGE_DROP_TOP, flip_vertical=IMAGE_FLIP,
 
 def convert_audio_to_images(path, output_dir, sr=SAMPLE_RATE, start=AUDIO_START, duration=AUDIO_DURATION,
                             res_type=RESAMPLE_TYPE, n_fft=N_FFT, hop_length=HOP_LENGTH,
-                            pixels_per_chunk=PIXELS_PER_CHUNK, truncate=TRUNCATE, debug=False):
+                            pixels_per_chunk=PIXELS_PER_CHUNK, truncate=TRUNCATE, callback=None, debug=False):
     path = truepath(path)
     output_dir = truepath(output_dir)
     audio, sr = load_audio(path, sr=sr, offset=start, duration=duration, res_type=res_type, debug=debug)
     spec = stft(audio, n_fft=n_fft, hop_length=hop_length, debug=debug)
     chunks = spec_to_chunks(spec, pixels_per_chunk=pixels_per_chunk, truncate=truncate, debug=debug)
     save_chunks(chunks, os.path.join(output_dir, os.path.splitext(os.path.basename(path))[0]), debug=debug)
+    if callback:
+        callback()
     return chunks
 
 
 def convert_images_to_audio(paths, output, n_iter=GRIFFINLIM_ITER, n_fft=N_FFT,
                             hop_length=HOP_LENGTH, sr=SAMPLE_RATE, norm=NORMALIZE_AUDIO,
-                            fmt=AUDIO_FORMAT, debug=False):
+                            fmt=AUDIO_FORMAT, callback=None, debug=False):
     paths = [truepath(path) for path in paths]
     output = truepath(output)
     paths = natsorted(paths)
@@ -158,4 +159,6 @@ def convert_images_to_audio(paths, output, n_iter=GRIFFINLIM_ITER, n_fft=N_FFT,
                         hop_length=hop_length, debug=debug) for chunk in chunks]
     recon = np.concatenate(recon)
     save_audio(recon, output, sr=sr, norm=norm, fmt=fmt)
+    if callback:
+        callback()
     return recon

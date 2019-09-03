@@ -4,6 +4,7 @@ import click
 import numpy as np
 from tqdm import tqdm
 from colorama import Fore
+from joblib import Parallel, delayed
 
 from .defaults import *
 from . import utils
@@ -48,11 +49,15 @@ def audio_to_images(path, output_dir, sample_rate=SAMPLE_RATE, start=AUDIO_START
     else:
         raise click.ClickException(f"{Fore.LIGHTRED_EX}No such file or directory: {Fore.YELLOW}'{path}'{Fore.RESET}")
 
-    with tqdm(files) as bar:
-        for file in bar:
-            utils.convert_audio_to_images(file, output_dir, sr=sample_rate, start=start, duration=duration,
-                                          res_type=res_type, n_fft=n_fft, hop_length=hop_length,
-                                          pixels_per_chunk=pixels_per_chunk, truncate=truncate, debug=debug)
+    with tqdm(total=len(files)) as bar:
+        Parallel(n_jobs=NUM_JOBS, require='sharedmem')(
+            delayed(utils.convert_audio_to_images)(
+                file, output_dir, sr=sample_rate, start=start, duration=duration,
+                res_type=res_type, n_fft=n_fft, hop_length=hop_length,
+                pixels_per_chunk=pixels_per_chunk, truncate=truncate,
+                callback=lambda *args, **kw: bar.update(), debug=debug
+            ) for file in files
+        )
     click.echo(f"\n{Fore.GREEN}Converted {len(files)} audio file(s) to spectrograms "
                f"in {time.time() - start_time:.2f}s.{Fore.RESET}")
     click.echo(f"\n{Fore.GREEN}The generated spectrogram chunks are in {Fore.YELLOW}{output_dir}{Fore.RESET}\n")
@@ -86,18 +91,30 @@ def images_to_audio(path, output_dir, depth=WALK_DEPTH, n_iter=GRIFFINLIM_ITER,
         utils.convert_images_to_audio([path], output, n_iter=n_iter, hop_length=hop_length,
                                       n_fft=n_fft, sr=sample_rate, norm=norm, fmt=fmt, debug=debug)
     elif os.path.isdir(path):
-        directories = utils.walk_dir(path, depth=depth)
-        num_tracks = len([d for d in directories if utils.list_files(d)])
+        directories = [d for d in utils.walk_dir(path, depth=depth) if utils.list_files(d)]
+        num_tracks = len(directories)
         if num_tracks == 0:
             raise click.ClickException(f"{Fore.LIGHTRED_EX}Could not find any (valid) images to"
                                        f" reconstruct audio from under {Fore.YELLOW}'{path}'{Fore.RESET}")
         click.echo(f"Reconstructing {num_tracks} audio track(s) from {Fore.YELLOW}'{path}'{Fore.RESET}")
-        for directory in directories:
-            files = utils.list_files(directory)
-            if files:
-                output = os.path.join(output_dir, f"{os.path.basename(directory)}.{fmt}")
-                utils.convert_images_to_audio(files, output, n_iter=n_iter, hop_length=hop_length,
-                                              n_fft=n_fft, sr=sample_rate, norm=norm, fmt=fmt, debug=debug)
+
+        jobs = {directory: utils.list_files(directory) for directory in directories}
+        with tqdm(total=num_tracks) as bar:
+            Parallel(n_jobs=NUM_JOBS, require='sharedmem')(
+                delayed(utils.convert_images_to_audio)(
+                    files, os.path.join(output_dir, f"{os.path.basename(directory)}.{fmt}"),
+                    n_iter=n_iter, hop_length=hop_length,
+                    n_fft=n_fft, sr=sample_rate, norm=norm, fmt=fmt,
+                    callback=lambda *args, **kw: bar.update(), debug=debug
+                ) for directory, files in jobs.items()
+            )
+
+        # print(directories)
+        # for directory in tqdm(directories):
+        #     utils.convert_images_to_audio(jobs[directory],
+        #                                   os.path.join(output_dir, f"{os.path.basename(directory)}.{fmt}"),
+        #                                   n_iter=n_iter, hop_length=hop_length,
+        #                                   n_fft=n_fft, sr=sample_rate, norm=norm, fmt=fmt, debug=debug)
     click.echo(f"\n{Fore.GREEN}Converted {num_tracks} spectrograms "
                f"to audio in {time.time() - start_time:.2f}s{Fore.RESET}\n")
     click.echo(f"\n{Fore.GREEN}The generated audio tracks are in {Fore.YELLOW}{output_dir}{Fore.RESET}\n")
