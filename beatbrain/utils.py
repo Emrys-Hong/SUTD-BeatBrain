@@ -7,7 +7,7 @@ import librosa as rosa
 import librosa.display
 from PIL import Image
 from natsort import natsorted
-import joblib
+from joblib import Parallel, delayed
 
 from .defaults import *
 
@@ -41,7 +41,7 @@ def load_audio(path, debug=False, **kwargs):
     return audio, sr
 
 
-def save_audio(audio, path, sr=SAMPLE_RATE, norm=NORMALIZE_AUDIO, fmt='wav', debug=False):
+def save_audio(audio, path, sr=SAMPLE_RATE, norm=NORMALIZE_AUDIO, fmt='wav'):
     if fmt != 'wav':
         raise NotImplementedError("Only .wav is currently supported.")
     rosa.output.write_wav(path, audio, sr, norm=norm)
@@ -83,6 +83,15 @@ def spec_to_chunks(spec, pixels_per_chunk=128, truncate=True, debug=False):
     return chunks
 
 
+def save_chunk(chunk, path, mode=IMAGE_MODE, remove_top_row=IMAGE_DROP_TOP, flip_vertical=IMAGE_FLIP):
+    if remove_top_row:
+        chunk = chunk[:-1]
+    if flip_vertical:
+        chunk = chunk[::-1]
+    image = Image.fromarray(chunk, mode=mode)
+    image.save(path)
+
+
 def save_chunks(chunks, output_dir, basename=None, debug=False):
     start = time.time()
     output_dir = os.path.abspath(output_dir)
@@ -98,24 +107,22 @@ def save_chunks(chunks, output_dir, basename=None, debug=False):
         print(f"Saved {len(chunks)} chunks in {time.time() - start:.2f}s")
 
 
-def save_chunk(chunk, path, mode=IMAGE_MODE, remove_top_row=IMAGE_DROP_TOP, flip_vertical=IMAGE_FLIP):
-    if remove_top_row:
-        chunk = chunk[:-1]
-    if flip_vertical:
-        chunk = chunk[::-1]
-    image = Image.fromarray(chunk, mode=mode)
-    image.save(path)
-
-
-def load_chunk(path, restore_top_row=IMAGE_DROP_TOP, flip_vertical=IMAGE_FLIP):
-    chunk = np.asarray(Image.open(path))
-    if flip_vertical:
-        chunk = chunk[::-1]
-    if restore_top_row:
-        restored = np.zeros((chunk.shape[0] + 1, *chunk.shape[1:]), dtype=chunk.dtype)
-        restored[:chunk.shape[0]] = chunk
-        chunk = restored
-    return chunk
+def load_chunks(paths, restore_top_row=IMAGE_DROP_TOP, flip_vertical=IMAGE_FLIP, concatenate=IMAGE_CONCATENATE):
+    chunks = []
+    for path in paths:
+        chunk = np.asarray(Image.open(path))
+        if flip_vertical:
+            chunk = chunk[::-1]
+        if restore_top_row:
+            restored = np.zeros((chunk.shape[0] + 1, *chunk.shape[1:]), dtype=chunk.dtype)
+            restored[:chunk.shape[0]] = chunk
+            chunk = restored
+        chunks.append(chunk)
+    if len(chunks) == 1:
+        return chunks[0]
+    if concatenate:
+        chunks = np.concatenate(chunks)
+    return chunks
 
 
 def convert_audio_to_images(path, output_dir, sr=SAMPLE_RATE, start=AUDIO_START, duration=AUDIO_DURATION,
@@ -133,11 +140,11 @@ def convert_images_to_audio(paths, output, n_iter=GRIFFINLIM_ITER, n_fft=N_FFT,
                             fmt=AUDIO_FORMAT, debug=False):
     start = time.time()
     paths = natsorted(paths)
-    chunks = [load_chunk(path) for path in paths]
+    chunks = load_chunks(paths)
     recon = [griffinlim(chunk, n_iter=n_iter, win_length=n_fft,
                         hop_length=hop_length, debug=False) for chunk in chunks]
     recon = np.concatenate(recon)
-    save_audio(recon, output, sr=sr, norm=norm, fmt=fmt, debug=debug)
+    save_audio(recon, output, sr=sr, norm=norm, fmt=fmt)
     if debug:
         print(f"Reconstructed {len(paths)} chunks in {time.time() - start:.2f}s")
     return recon
