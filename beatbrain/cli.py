@@ -35,24 +35,27 @@ def audio_to_images(path, output_dir, sample_rate=SAMPLE_RATE, start=AUDIO_START
                     duration=AUDIO_DURATION, res_type=RESAMPLE_TYPE,
                     n_fft=N_FFT, hop_length=HOP_LENGTH,
                     pixels_per_chunk=PIXELS_PER_CHUNK, truncate=TRUNCATE, debug=False):
+    start_time = time.time()
+    path = utils.truepath(path)
+    output_dir = utils.truepath(output_dir)
     if os.path.isfile(path):
         files = [path]
-        click.echo(f"Converting {Fore.YELLOW}'{path}'{Fore.RESET} to spectrogram chunk images...")
+        click.echo(f"Converting {Fore.YELLOW}'{path}'{Fore.RESET} to spectrogram chunks...")
     elif os.path.isdir(path):
         files = [os.path.join(path, file) for file in os.listdir(path) if os.path.isfile(os.path.join(path, file))]
-        click.echo(f"Converting {len(files)} files found in "
-                   f"{Fore.YELLOW}'{path}'{Fore.RESET} to spectrogram chunk images...")
+        click.echo(f"Converting {len(files)} file(s) found in "
+                   f"{Fore.YELLOW}'{path}'{Fore.RESET} to spectrogram chunks...")
     else:
         raise click.ClickException(f"{Fore.LIGHTRED_EX}No such file or directory: {Fore.YELLOW}'{path}'{Fore.RESET}")
-    click.echo(f"Converting {len(files)} audio files "
-               f"(from {Fore.YELLOW}'{output_dir}'{Fore.RESET}) to spectrogram chunks... ")
+
     with tqdm(files) as bar:
         for file in bar:
             utils.convert_audio_to_images(file, output_dir, sr=sample_rate, start=start, duration=duration,
                                           res_type=res_type, n_fft=n_fft, hop_length=hop_length,
                                           pixels_per_chunk=pixels_per_chunk, truncate=truncate, debug=debug)
-    click.echo(f"\n{Fore.GREEN}Finished converting {len(files)} audio file(s) to spectrogram image chunks.{Fore.RESET}")
-    click.echo(f"{Fore.GREEN}The generated spectrogram image chunks are in {Fore.YELLOW}{output_dir}{Fore.RESET}")
+    click.echo(f"\n{Fore.GREEN}Converted {len(files)} audio file(s) to spectrograms "
+               f"in {time.time() - start_time:.2f}s.{Fore.RESET}")
+    click.echo(f"\n{Fore.GREEN}The generated spectrogram chunks are in {Fore.YELLOW}{output_dir}{Fore.RESET}\n")
 
 
 @click.command(name='reconstruct', short_help="Reconstruct audio from spectrogram images")
@@ -70,7 +73,12 @@ def audio_to_images(path, output_dir, sample_rate=SAMPLE_RATE, start=AUDIO_START
 def images_to_audio(path, output_dir, depth=WALK_DEPTH, n_iter=GRIFFINLIM_ITER,
                     hop_length=HOP_LENGTH, n_fft=N_FFT, sample_rate=SAMPLE_RATE, norm=NORMALIZE_AUDIO,
                     fmt=AUDIO_FORMAT, debug=False):
+    start_time = time.time()
+    path = utils.truepath(path)
+    output_dir = utils.truepath(output_dir)
+    num_tracks = 0
     if os.path.isfile(path):
+        num_tracks = 1
         click.echo(f"Reconstructing audio from single image: {Fore.YELLOW}'{path}'{Fore.RESET}")
         output = os.path.splitext(os.path.basename(path))[0]
         output = output[:output.rfind('_')]
@@ -90,3 +98,6 @@ def images_to_audio(path, output_dir, depth=WALK_DEPTH, n_iter=GRIFFINLIM_ITER,
                 output = os.path.join(output_dir, f"{os.path.basename(directory)}.{fmt}")
                 utils.convert_images_to_audio(files, output, n_iter=n_iter, hop_length=hop_length,
                                               n_fft=n_fft, sr=sample_rate, norm=norm, fmt=fmt, debug=debug)
+    click.echo(f"\n{Fore.GREEN}Converted {num_tracks} spectrograms "
+               f"to audio in {time.time() - start_time:.2f}s{Fore.RESET}\n")
+    click.echo(f"\n{Fore.GREEN}The generated audio tracks are in {Fore.YELLOW}{output_dir}{Fore.RESET}\n")

@@ -12,9 +12,14 @@ from joblib import Parallel, delayed
 from .defaults import *
 
 
-def walk_dir(root, depth=WALK_DEPTH):
-    all_dirs = [root]
-    dirs = [root]
+def truepath(path):
+    return os.path.abspath(os.path.realpath(os.path.expanduser(os.path.expandvars(path))))
+
+
+def walk_dir(path, depth=WALK_DEPTH):
+    path = truepath(path)
+    all_dirs = [path]
+    dirs = [path]
     while len(dirs):
         next_dirs = []
         for parent in dirs:
@@ -28,13 +33,15 @@ def walk_dir(root, depth=WALK_DEPTH):
     return all_dirs
 
 
-def list_files(root):
-    files = [os.path.join(root, f) for f in os.listdir(root) if os.path.isfile(os.path.join(root, f))]
+def list_files(path):
+    path = truepath(path)
+    files = [os.path.join(path, f) for f in os.listdir(path) if os.path.isfile(os.path.join(path, f))]
     return files
 
 
 def load_audio(path, debug=False, **kwargs):
     start = time.time()
+    path = truepath(path)
     audio, sr = rosa.load(path, **kwargs)
     if debug:
         print(f"Loaded {audio.size / sr:.3f}s of audio at sr={sr} in {time.time() - start:.2f}s")
@@ -42,6 +49,7 @@ def load_audio(path, debug=False, **kwargs):
 
 
 def save_audio(audio, path, sr=SAMPLE_RATE, norm=NORMALIZE_AUDIO, fmt='wav'):
+    path = truepath(path)
     if fmt != 'wav':
         raise NotImplementedError("Only .wav is currently supported.")
     rosa.output.write_wav(path, audio, sr, norm=norm)
@@ -84,6 +92,7 @@ def spec_to_chunks(spec, pixels_per_chunk=128, truncate=True, debug=False):
 
 
 def save_chunk(chunk, path, mode=IMAGE_MODE, remove_top_row=IMAGE_DROP_TOP, flip_vertical=IMAGE_FLIP):
+    path = truepath(path)
     if remove_top_row:
         chunk = chunk[:-1]
     if flip_vertical:
@@ -94,7 +103,7 @@ def save_chunk(chunk, path, mode=IMAGE_MODE, remove_top_row=IMAGE_DROP_TOP, flip
 
 def save_chunks(chunks, output_dir, basename=None, debug=False):
     start = time.time()
-    output_dir = os.path.abspath(output_dir)
+    output_dir = truepath(output_dir)
     os.makedirs(output_dir, exist_ok=True)
     if basename is None:
         basename = os.path.basename(output_dir)
@@ -110,6 +119,7 @@ def save_chunks(chunks, output_dir, basename=None, debug=False):
 def load_chunks(paths, restore_top_row=IMAGE_DROP_TOP, flip_vertical=IMAGE_FLIP, concatenate=IMAGE_CONCATENATE):
     chunks = []
     for path in paths:
+        path = truepath(path)
         chunk = np.asarray(Image.open(path))
         if flip_vertical:
             chunk = chunk[::-1]
@@ -128,6 +138,8 @@ def load_chunks(paths, restore_top_row=IMAGE_DROP_TOP, flip_vertical=IMAGE_FLIP,
 def convert_audio_to_images(path, output_dir, sr=SAMPLE_RATE, start=AUDIO_START, duration=AUDIO_DURATION,
                             res_type=RESAMPLE_TYPE, n_fft=N_FFT, hop_length=HOP_LENGTH,
                             pixels_per_chunk=PIXELS_PER_CHUNK, truncate=TRUNCATE, debug=False):
+    path = truepath(path)
+    output_dir = truepath(output_dir)
     audio, sr = load_audio(path, sr=sr, offset=start, duration=duration, res_type=res_type, debug=debug)
     spec = stft(audio, n_fft=n_fft, hop_length=hop_length, debug=debug)
     chunks = spec_to_chunks(spec, pixels_per_chunk=pixels_per_chunk, truncate=truncate, debug=debug)
@@ -138,13 +150,12 @@ def convert_audio_to_images(path, output_dir, sr=SAMPLE_RATE, start=AUDIO_START,
 def convert_images_to_audio(paths, output, n_iter=GRIFFINLIM_ITER, n_fft=N_FFT,
                             hop_length=HOP_LENGTH, sr=SAMPLE_RATE, norm=NORMALIZE_AUDIO,
                             fmt=AUDIO_FORMAT, debug=False):
-    start = time.time()
+    paths = [truepath(path) for path in paths]
+    output = truepath(output)
     paths = natsorted(paths)
     chunks = load_chunks(paths)
     recon = [griffinlim(chunk, n_iter=n_iter, win_length=n_fft,
-                        hop_length=hop_length, debug=False) for chunk in chunks]
+                        hop_length=hop_length, debug=debug) for chunk in chunks]
     recon = np.concatenate(recon)
     save_audio(recon, output, sr=sr, norm=norm, fmt=fmt)
-    if debug:
-        print(f"Reconstructed {len(paths)} chunks in {time.time() - start:.2f}s")
     return recon
