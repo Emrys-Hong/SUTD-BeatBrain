@@ -1,0 +1,11 @@
+colorama
+tqdm
+IPython
+matplotlib
+joblib
+click
+numpy
+Pillow
+natsort
+ffmpeg
+librosa
