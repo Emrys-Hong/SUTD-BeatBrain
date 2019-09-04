@@ -9,3 +9,4 @@ Pillow
 natsort
 ffmpeg
 librosa
+pytest
