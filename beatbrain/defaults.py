@@ -20,4 +20,4 @@ IMAGE_DROP_TOP = True
 IMAGE_FLIP = True
 IMAGE_MODE = 'F'
 IMAGE_CONCATENATE = False
-NUM_JOBS = os.cpu_count() - 1
+NUM_JOBS = int(round(os.cpu_count() * 0.75))
