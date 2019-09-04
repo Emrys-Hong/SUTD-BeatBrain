@@ -3,7 +3,7 @@ import re
 import glob
 import time
 import numpy as np
-import librosa as rosa
+import librosa
 import librosa.display
 from PIL import Image
 from natsort import natsorted
@@ -41,22 +41,22 @@ def list_files(path):
 def load_audio(path, debug=False, **kwargs):
     start = time.time()
     path = truepath(path)
-    audio, sr = rosa.load(path, **kwargs)
+    audio, sr = librosa.load(path, **kwargs)
     if debug:
         print(f"Loaded {audio.size / sr:.3f}s of audio at sr={sr} in {time.time() - start:.2f}s")
     return audio, sr
 
 
-def save_audio(audio, path, sr=SAMPLE_RATE, norm=NORMALIZE_AUDIO, fmt='wav'):
+def save_audio(audio, path, sr=SAMPLE_RATE, norm=NORMALIZE_AUDIO, fmt=AUDIO_FORMAT):
     path = truepath(path)
     if fmt != 'wav':
         raise NotImplementedError("Only .wav is currently supported.")
-    rosa.output.write_wav(path, audio, sr, norm=norm)
+    librosa.output.write_wav(path, audio, sr, norm=norm)
 
 
 def stft(audio, debug=False, **kwargs):
     start = time.time()
-    spec = np.abs(rosa.stft(audio, **kwargs))
+    spec = np.abs(librosa.stft(audio, **kwargs))
     if debug:
         print(f"STFT'd {audio.size} samples of audio in {time.time() - start:.2f}s")
     return spec / spec.max()
@@ -64,13 +64,13 @@ def stft(audio, debug=False, **kwargs):
 
 def griffinlim(spec, debug=False, **kwargs):
     start = time.time()
-    recon = rosa.griffinlim(spec, **kwargs)
+    recon = librosa.griffinlim(spec, **kwargs)
     if debug:
         print(f"Reconstructed {recon.size} samples in {time.time() - start:.2f}s")
     return recon
 
 
-def spec_to_chunks(spec, pixels_per_chunk=128, truncate=True, debug=False):
+def spec_to_chunks(spec, pixels_per_chunk=PIXELS_PER_CHUNK, truncate=TRUNCATE, debug=False):
     start = time.time()
     remainder = spec.shape[1] % pixels_per_chunk
     if truncate:
@@ -83,7 +83,10 @@ def spec_to_chunks(spec, pixels_per_chunk=128, truncate=True, debug=False):
             print(f"Truncated spectrogram shape: {spec_chunkable.shape}")
         else:
             print(f"Padded spectrogram shape: {spec_chunkable.shape}")
-    chunks = np.split(spec_chunkable, spec_chunkable.shape[1] // pixels_per_chunk, axis=1)
+    if spec_chunkable.shape[1] >= pixels_per_chunk:
+        chunks = np.split(spec_chunkable, spec_chunkable.shape[1] // pixels_per_chunk, axis=1)
+    else:
+        chunks = [spec_chunkable]
     if debug:
         print(f"Split ({spec.shape[1]} x {spec.shape[0]}) image "
               f"into {len(chunks)} chunks in {time.time() - start: .2f}s")
@@ -135,26 +138,27 @@ def load_chunks(paths, restore_top_row=IMAGE_DROP_TOP, flip_vertical=IMAGE_FLIP,
 
 
 def convert_audio_to_images(path, output_dir, sr=SAMPLE_RATE, start=AUDIO_START, duration=AUDIO_DURATION,
-                            res_type=RESAMPLE_TYPE, n_fft=N_FFT, hop_length=HOP_LENGTH,
-                            pixels_per_chunk=PIXELS_PER_CHUNK, truncate=TRUNCATE, debug=False):
+                            res_type=RESAMPLE_TYPE, n_fft=N_FFT, pixels_per_chunk=PIXELS_PER_CHUNK,
+                            truncate=TRUNCATE, save=True, debug=False):
     path = truepath(path)
     output_dir = truepath(output_dir)
     audio, sr = load_audio(path, sr=sr, offset=start, duration=duration, res_type=res_type, debug=debug)
-    spec = stft(audio, n_fft=n_fft, hop_length=hop_length, debug=debug)
+    spec = stft(audio, n_fft=n_fft, debug=debug)
     chunks = spec_to_chunks(spec, pixels_per_chunk=pixels_per_chunk, truncate=truncate, debug=debug)
-    save_chunks(chunks, os.path.join(output_dir, os.path.splitext(os.path.basename(path))[0]), debug=debug)
+    if save:
+        save_chunks(chunks, os.path.join(output_dir, os.path.splitext(os.path.basename(path))[0]), debug=debug)
     return chunks
 
 
 def convert_images_to_audio(paths, output, n_iter=GRIFFINLIM_ITER, n_fft=N_FFT,
-                            hop_length=HOP_LENGTH, sr=SAMPLE_RATE, norm=NORMALIZE_AUDIO,
-                            fmt=AUDIO_FORMAT, debug=False):
+                            sr=SAMPLE_RATE, norm=NORMALIZE_AUDIO,
+                            fmt=AUDIO_FORMAT, save=True, debug=False):
     paths = [truepath(path) for path in paths]
     output = truepath(output)
     paths = natsorted(paths)
     chunks = load_chunks(paths)
-    recon = [griffinlim(chunk, n_iter=n_iter, win_length=n_fft,
-                        hop_length=hop_length, debug=debug) for chunk in chunks]
+    recon = [griffinlim(chunk, n_iter=n_iter, win_length=n_fft, debug=debug) for chunk in chunks]
     recon = np.concatenate(recon)
-    save_audio(recon, output, sr=sr, norm=norm, fmt=fmt)
+    if save:
+        save_audio(recon, output, sr=sr, norm=norm, fmt=fmt)
     return recon

@@ -29,7 +29,6 @@ def convert(ctx):
 @click.option('--resample', 'res_type', type=click.Choice(['kaiser_best', 'kaiser_fast']),
               default=RESAMPLE_TYPE, help="Resampling mode", show_default=True)
 @click.option('--fftsize', 'n_fft', default=N_FFT, help="FFT window size", show_default=True)
-@click.option('--hopsize', 'hop_length', default=HOP_LENGTH, help="STFT hop size", show_default=True)
 @click.option('--chunksize', 'pixels_per_chunk', default=PIXELS_PER_CHUNK,
               help="Horizontal pixels per spectrogram chunk", show_default=True)
 @click.option('--skip', default=0, help="Files to skip (Starting from 0)", show_default=True)
@@ -38,7 +37,7 @@ def convert(ctx):
 @click.option('--debug/--no-debug', default=False)
 def audio_to_images(path, output_dir, sample_rate=SAMPLE_RATE, start=AUDIO_START,
                     duration=AUDIO_DURATION, res_type=RESAMPLE_TYPE,
-                    n_fft=N_FFT, hop_length=HOP_LENGTH,
+                    n_fft=N_FFT,
                     pixels_per_chunk=PIXELS_PER_CHUNK, truncate=TRUNCATE, skip=None, debug=False):
     start_time = time.time()
     path = utils.truepath(path)
@@ -59,8 +58,8 @@ def audio_to_images(path, output_dir, sample_rate=SAMPLE_RATE, start=AUDIO_START
     Parallel(n_jobs=NUM_JOBS, verbose=20)(
         delayed(utils.convert_audio_to_images)(
             file, output_dir, sr=sample_rate, start=start, duration=duration,
-            res_type=res_type, n_fft=n_fft, hop_length=hop_length,
-            pixels_per_chunk=pixels_per_chunk, truncate=truncate, debug=debug
+            res_type=res_type, n_fft=n_fft, pixels_per_chunk=pixels_per_chunk,
+            truncate=truncate, debug=debug
         ) for file in files
     )
     click.echo(f"\n{Fore.GREEN}Converted {len(files)} audio file(s) to spectrograms "
@@ -75,14 +74,13 @@ def audio_to_images(path, output_dir, sample_rate=SAMPLE_RATE, start=AUDIO_START
               help='How many subdirectories deep to search for images (1 = root only). '
                    'Ignored if input is a single image.', default=WALK_DEPTH)
 @click.option('--iter', '--griffinlimiter', 'n_iter', default=GRIFFINLIM_ITER)
-@click.option('--hopsize', 'hop_length', default=HOP_LENGTH)
 @click.option('--fftsize', 'n_fft', default=N_FFT)
 @click.option('--samplerate', 'sample_rate', default=SAMPLE_RATE)
 @click.option('--norm', 'norm', default=NORMALIZE_AUDIO)
 @click.option('-f', '--format', 'fmt', default=AUDIO_FORMAT)
 @click.option('--skip', default=0, help="Directories to skip (Starting from 0)", show_default=True)
 def images_to_audio(path, output_dir, depth=WALK_DEPTH, n_iter=GRIFFINLIM_ITER,
-                    hop_length=HOP_LENGTH, n_fft=N_FFT, sample_rate=SAMPLE_RATE, norm=NORMALIZE_AUDIO,
+                    n_fft=N_FFT, sample_rate=SAMPLE_RATE, norm=NORMALIZE_AUDIO,
                     fmt=AUDIO_FORMAT, skip=None, debug=False):
     start_time = time.time()
     path = utils.truepath(path)
@@ -94,8 +92,8 @@ def images_to_audio(path, output_dir, depth=WALK_DEPTH, n_iter=GRIFFINLIM_ITER,
         output = os.path.splitext(os.path.basename(path))[0]
         output = output[:output.rfind('_')]
         output = os.path.join(output_dir, f"{output}.{fmt}")
-        utils.convert_images_to_audio([path], output, n_iter=n_iter, hop_length=hop_length,
-                                      n_fft=n_fft, sr=sample_rate, norm=norm, fmt=fmt, debug=debug)
+        utils.convert_images_to_audio([path], output, n_iter=n_iter, n_fft=n_fft,
+                                      sr=sample_rate, norm=norm, fmt=fmt, debug=debug)
     elif os.path.isdir(path):
         directories = [d for d in utils.walk_dir(path, depth=depth) if utils.list_files(d)]
         if skip:
@@ -111,9 +109,8 @@ def images_to_audio(path, output_dir, depth=WALK_DEPTH, n_iter=GRIFFINLIM_ITER,
         Parallel(n_jobs=NUM_JOBS, verbose=20)(
             delayed(utils.convert_images_to_audio)(
                 files, os.path.join(output_dir, f"{os.path.basename(directory)}.{fmt}"),
-                n_iter=n_iter, hop_length=hop_length,
-                n_fft=n_fft, sr=sample_rate, norm=norm, fmt=fmt,
-                debug=debug
+                n_iter=n_iter, n_fft=n_fft, sr=sample_rate,
+                norm=norm, fmt=fmt, debug=debug
             ) for directory, files in jobs.items()
         )
 
