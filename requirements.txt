@@ -1,3 +1,4 @@
+tensorflow
 parametrized
 colorama
 tqdm
