@@ -130,8 +130,6 @@ def load_chunks(paths, restore_top_row=IMAGE_DROP_TOP, flip_vertical=IMAGE_FLIP,
             restored[:chunk.shape[0]] = chunk
             chunk = restored
         chunks.append(chunk)
-    if len(chunks) == 1:
-        return chunks[0]
     if concatenate:
         chunks = np.concatenate(chunks)
     return chunks
