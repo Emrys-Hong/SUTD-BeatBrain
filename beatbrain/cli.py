@@ -55,7 +55,7 @@ def audio_to_images(path, output_dir, sample_rate=SAMPLE_RATE, start=AUDIO_START
     else:
         raise click.ClickException(f"{Fore.LIGHTRED_EX}No such file or directory: {Fore.YELLOW}'{path}'{Fore.RESET}")
 
-    Parallel(n_jobs=NUM_JOBS, verbose=20)(
+    Parallel(n_jobs=NUM_CPUS, verbose=20)(
         delayed(utils.convert_audio_to_images)(
             file, output_dir, sr=sample_rate, start=start, duration=duration,
             res_type=res_type, n_fft=n_fft, pixels_per_chunk=pixels_per_chunk,
@@ -106,7 +106,7 @@ def images_to_audio(path, output_dir, depth=WALK_DEPTH, n_iter=GRIFFINLIM_ITER,
         click.echo(f"Reconstructing {num_tracks} audio track(s) from {Fore.YELLOW}'{path}'{Fore.RESET}")
 
         jobs = {directory: utils.list_files(directory) for directory in directories}
-        Parallel(n_jobs=NUM_JOBS, verbose=20)(
+        Parallel(n_jobs=NUM_CPUS, verbose=20)(
             delayed(utils.convert_images_to_audio)(
                 files, os.path.join(output_dir, f"{os.path.basename(directory)}.{fmt}"),
                 n_iter=n_iter, n_fft=n_fft, sr=sample_rate,

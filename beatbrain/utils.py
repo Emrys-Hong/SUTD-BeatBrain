@@ -75,18 +75,18 @@ def spec_to_chunks(spec, pixels_per_chunk=PIXELS_PER_CHUNK, truncate=TRUNCATE, d
     remainder = spec.shape[1] % pixels_per_chunk
     if truncate:
         last_index = spec.shape[1] - remainder
-        spec_chunkable = spec[:, :last_index]
+        spec = spec[:, :-remainder]
     else:
-        spec_chunkable = np.pad(spec, ((0, 0), (0, pixels_per_chunk - remainder)), mode='constant')
+        spec = np.pad(spec, ((0, 0), (0, pixels_per_chunk - remainder)), mode='constant')
     if debug:
         if truncate:
-            print(f"Truncated spectrogram shape: {spec_chunkable.shape}")
+            print(f"Truncated spectrogram shape: {spec.shape}")
         else:
-            print(f"Padded spectrogram shape: {spec_chunkable.shape}")
-    if spec_chunkable.shape[1] >= pixels_per_chunk:
-        chunks = np.split(spec_chunkable, spec_chunkable.shape[1] // pixels_per_chunk, axis=1)
+            print(f"Padded spectrogram shape: {spec.shape}")
+    if spec.shape[1] >= pixels_per_chunk:
+        chunks = np.split(spec, spec.shape[1] // pixels_per_chunk, axis=1)
     else:
-        chunks = [spec_chunkable]
+        chunks = [spec]
     if debug:
         print(f"Split ({spec.shape[1]} x {spec.shape[0]}) image "
               f"into {len(chunks)} chunks in {time.time() - start: .2f}s")
