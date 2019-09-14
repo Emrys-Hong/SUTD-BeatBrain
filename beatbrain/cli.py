@@ -6,7 +6,7 @@ from tqdm import tqdm
 from colorama import Fore
 from joblib import Parallel, delayed
 
-from .defaults import *
+from .settings import *
 from . import utils
 
 
@@ -29,7 +29,7 @@ def convert(ctx):
 @click.option('--resample', 'res_type', type=click.Choice(['kaiser_best', 'kaiser_fast']),
               default=RESAMPLE_TYPE, help="Resampling mode", show_default=True)
 @click.option('--fftsize', 'n_fft', default=N_FFT, help="FFT window size", show_default=True)
-@click.option('--chunksize', 'pixels_per_chunk', default=PIXELS_PER_CHUNK,
+@click.option('--chunksize', 'pixels_per_chunk', default=CHUNK_SIZE,
               help="Horizontal pixels per spectrogram chunk", show_default=True)
 @click.option('--skip', default=0, help="Files to skip (Starting from 0)", show_default=True)
 @click.option('--truncate/--pad', 'truncate', default=TRUNCATE,
@@ -38,7 +38,7 @@ def convert(ctx):
 def audio_to_images(path, output_dir, sample_rate=SAMPLE_RATE, start=AUDIO_START,
                     duration=AUDIO_DURATION, res_type=RESAMPLE_TYPE,
                     n_fft=N_FFT,
-                    pixels_per_chunk=PIXELS_PER_CHUNK, truncate=TRUNCATE, skip=None, debug=False):
+                    pixels_per_chunk=CHUNK_SIZE, truncate=TRUNCATE, skip=None, debug=False):
     start_time = time.time()
     path = utils.truepath(path)
     output_dir = utils.truepath(output_dir)

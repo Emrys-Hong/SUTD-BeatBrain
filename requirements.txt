@@ -13,3 +13,6 @@ natsort
 ffmpeg
 librosa
 pytest
+pydot
+pydotplus
+graphviz

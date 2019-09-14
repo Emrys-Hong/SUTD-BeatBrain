@@ -4,7 +4,7 @@ import pytest
 import librosa
 import numpy as np
 
-from beatbrain import utils, defaults
+from beatbrain import utils, settings
 
 
 def test_stft():

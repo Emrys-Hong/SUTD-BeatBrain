@@ -1,6 +1,6 @@
 import click
 
-from .defaults import *
+from .settings import *
 from . import cli
 
 

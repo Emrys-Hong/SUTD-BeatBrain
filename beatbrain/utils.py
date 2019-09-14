@@ -8,7 +8,7 @@ import librosa.display
 from PIL import Image
 from natsort import natsorted
 
-from .defaults import *
+from .settings import *
 
 
 def truepath(path):
@@ -70,7 +70,7 @@ def griffinlim(spec, debug=False, **kwargs):
     return recon
 
 
-def spec_to_chunks(spec, pixels_per_chunk=PIXELS_PER_CHUNK, truncate=TRUNCATE, debug=False):
+def spec_to_chunks(spec, pixels_per_chunk=CHUNK_SIZE, truncate=TRUNCATE, debug=False):
     start = time.time()
     remainder = spec.shape[1] % pixels_per_chunk
     if truncate:
@@ -136,7 +136,7 @@ def load_chunks(paths, restore_top_row=IMAGE_DROP_TOP, flip_vertical=IMAGE_FLIP,
 
 
 def convert_audio_to_images(path, output_dir, sr=SAMPLE_RATE, start=AUDIO_START, duration=AUDIO_DURATION,
-                            res_type=RESAMPLE_TYPE, n_fft=N_FFT, pixels_per_chunk=PIXELS_PER_CHUNK,
+                            res_type=RESAMPLE_TYPE, n_fft=N_FFT, pixels_per_chunk=CHUNK_SIZE,
                             truncate=TRUNCATE, save=True, debug=False):
     path = truepath(path)
     output_dir = truepath(output_dir)
