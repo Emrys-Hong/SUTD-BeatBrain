@@ -1,10 +1,12 @@
-import io
+import os
 import pathlib
 import librosa
 from natsort import natsorted
 import numpy as np
 import tensorflow as tf
 from PIL import Image
+
+from .. import settings
 
 
 # region Pre-processing Functions
@@ -15,11 +17,16 @@ def load_images_as_tensor(files):
     return images_tensor
 
 
-def audio_bytes_as_tensor(audio_bytes):
-    if isinstance(audio_bytes, tf.Tensor):
-        audio_bytes = audio_bytes.numpy()
-    file = io.BytesIO(audio_bytes)
-    audio, sr = librosa.load(file, sr=32768, res_type='kaiser_fast')
+def audio_file_as_tensor(path, sample_rate, resample_type):
+    if isinstance(path, tf.Tensor):
+        path = path.numpy().decode('utf8')
+        sample_rate = sample_rate.numpy()
+        resample_type = resample_type.numpy().decode('utf8')
+    try:
+        audio, sr = librosa.load(path, sr=sample_rate, res_type=resample_type)
+    except Exception as e:
+        print(f"Error loading file '{path}'")
+        raise e
     return audio
 
 
@@ -34,10 +41,12 @@ def audio_to_spec(audio, n_fft, hop_length, n_mels):
     spec = librosa.power_to_db(spec, ref=np.max)
     spec = spec - spec.min()
     spec = spec / np.abs(spec).max()
-
-    # Reconstruction:
+    # ==============================================================================
+    # RECONSTRUCTION
+    # ------------------------------------------------------------------------------
     # spec = librosa.db_to_power(80 * (spec - 1), ref=np.max)
     # audio = librosa.feature.inverse.mel_to_audio(spec, sr=sr, n_fft=n_fft, hop_length=hop_length)
+    # ==============================================================================
     return spec
 
 
@@ -63,14 +72,22 @@ def split_spec_to_chunks(spec, chunk_size, window_size):
 # endregion
 
 
-def load_dataset(data_root, n_fft=4096, hop_length=256, n_mels=512,
-                 chunk_size=512, window_size=1, batch_size=1,
-                 shuffle=True, prefetch=16, cache=True, parallel=True):
+def load_dataset(data_root, sample_rate=settings.SAMPLE_RATE, resample_type=settings.RESAMPLE_TYPE,
+                 n_fft=settings.N_FFT, hop_length=settings.HOP_LENGTH,
+                 n_mels=settings.N_MELS, chunk_size=settings.CHUNK_SIZE, channels_last=settings.CHANNELS_LAST,
+                 window_size=settings.WINDOW_SIZE, batch_size=settings.BATCH_SIZE,
+                 shuffle_buffer=settings.SHUFFLE_BUFFER, prefetch=settings.PREFETCH_DATA,
+                 cache=False, data_parallel=settings.DATA_PARALLEL, limit=None):
     """
     Given a directory containing audio files, return a `tf.data.Dataset` instance that generates
     spectrogram chunk images.
 
     Args:
+        data_parallel:
+        limit:
+        resample_type:
+        sample_rate:
+        channels_last:
         data_root (str): Root directory containing audio files (and ideally nothing else?)
         n_fft:
         hop_length:
@@ -78,45 +95,48 @@ def load_dataset(data_root, n_fft=4096, hop_length=256, n_mels=512,
         chunk_size: Number
         window_size: Number of neighboring spectrogram frames to include in each sample - provides local context
         batch_size: Number of samples per batch
-        shuffle (bool): Whether to shuffle the dataset
+        shuffle_buffer (bool): Whether to shuffle the dataset
         prefetch: Number of batches to prefetch in the pipeline. 0 to disable
-        cache (bool): Whether to cache the pre-processed dataset to disk
-        parallel (bool): Whether to parallelize pre-processing on CPU
+        cache (str): Whether to cache the pre-processed dataset to disk
 
     Returns:
         A `tf.data.Dataset` instance
     """
-    num_parallel = tf.data.experimental.AUTOTUNE if parallel else None
+    num_parallel = settings.NUM_CPUS if data_parallel else None
     data_root = pathlib.Path(data_root).resolve()
-    if data_root.is_dir():
-        files = natsorted(map(str, filter(pathlib.Path.is_file, data_root.iterdir())))
-    else:
-        files = [data_root]
+    files = natsorted(map(str, filter(pathlib.Path.is_file, data_root.iterdir())))
     dataset = tf.data.Dataset.from_tensor_slices(files)
-    dataset = dataset.map(tf.io.read_file)
-    dataset = dataset.map(lambda elem: tf.py_function(
-        audio_bytes_as_tensor,
-        [elem],
+    if shuffle_buffer:
+        dataset = dataset.shuffle(shuffle_buffer)
+    dataset = dataset.map(lambda path: tf.py_function(
+        audio_file_as_tensor,
+        [path, sample_rate, resample_type],
         tf.float32
-    ), num_parallel_calls=num_parallel)
-    dataset = dataset.map(lambda elem: tf.py_function(
+    ), num_parallel_calls=None)
+    if cache:  # Caching causes train set to be reused as test set???
+        if not isinstance(cache, str):
+            cache = ''
+        else:
+            os.makedirs(cache, exist_ok=True)
+        dataset = dataset.cache(filename=cache)
+    dataset = dataset.map(lambda audio: tf.py_function(
         audio_to_spec,
-        [elem, n_fft, hop_length, n_mels],
+        [audio, n_fft, hop_length, n_mels],
+        tf.float32
+    ), num_parallel_calls=None)
+    dataset = dataset.map(lambda spec: tf.py_function(
+        split_spec_to_chunks,
+        [spec, chunk_size, window_size],
         tf.float32
     ), num_parallel_calls=num_parallel)
-    # if cache:
-    #     os.makedirs('./tf_cache', exist_ok=True)
-    #     dataset = dataset.cache('./tf_cache/cache')
-    dataset = dataset.map(lambda elem: tf.py_function(
-        split_spec_to_chunks,
-        [elem, chunk_size, window_size],
-        tf.float32
-    ))
     dataset = dataset.unbatch()
-    if shuffle:
-        dataset = dataset.shuffle(50000)
-    if batch_size:
-        dataset = dataset.batch(batch_size)
+    if channels_last:
+        dataset = dataset.map(lambda e: tf.transpose(e, perm=[1, 2, 0]), num_parallel_calls=num_parallel)
+    if shuffle_buffer:
+        dataset = dataset.shuffle(shuffle_buffer)
+    dataset = dataset.batch(batch_size)
     if prefetch:
         dataset = dataset.prefetch(prefetch)
+    if limit:
+        dataset = dataset.take(limit)
     return dataset
