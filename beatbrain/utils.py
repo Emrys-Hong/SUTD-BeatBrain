@@ -6,7 +6,9 @@ import numpy as np
 import librosa
 import librosa.display
 from pathlib import Path
+from multiprocessing import Pool
 from natsort import natsorted
+from colorama import Fore
 from tqdm import tqdm
 from PIL import Image
 
@@ -135,27 +137,29 @@ def convert_audio_to_arrays(inp, out_dir, sr=settings.SAMPLE_RATE, offset=settin
         paths = natsorted(filter(Path.is_file, inp.rglob('*')))
     else:
         paths = [inp]
-    print(f"Converting files in '{inp}' to Numpy arrays...")
-    print(f"Arrays will be saved in '{out_dir}'.")
-    with tqdm(paths) as pbar:
-        for i, path in enumerate(pbar):
-            if i < skip:
-                continue
-            path = Path(path)
-            output = out_dir.joinpath(path.relative_to(inp))
-            output = output.parent.joinpath(output.stem)
-            audio, sr = librosa.load(path, sr=sr, offset=offset, duration=duration, res_type=settings.RESAMPLE_TYPE)
-            audio -= audio.mean()
-            audio /= np.abs(audio).max()
-            spec = librosa.feature.melspectrogram(audio, n_fft=n_fft, hop_length=hop_length, n_mels=n_mels)
-            spec = librosa.power_to_db(spec, ref=np.max)
-            spec = spec - spec.min()
-            spec = spec / np.abs(spec).max()
-            chunks = spec_to_chunks(spec, chunk_size, settings.TRUNCATE)
-            pbar.write(f"Converting '{path}'...")
-            output.mkdir(parents=True, exist_ok=True)
-            for i, chunk in enumerate(chunks):
-                np.save(output.joinpath(str(i)).resolve(), chunk)
+    pool = Pool(None)
+    write_tasks = []
+    print(f"Converting files in {Fore.YELLOW}'{inp}'{Fore.RESET} to Numpy arrays...")
+    print(f"Arrays will be saved in {Fore.YELLOW}'{out_dir}'{Fore.RESET}.\n\n")
+    for i, path in enumerate(tqdm(paths, desc="Converting")):
+        if i < skip:
+            continue
+        path = Path(path)
+        output = out_dir.joinpath(path.relative_to(inp))
+        output = output.parent.joinpath(output.stem)
+        audio, sr = librosa.load(str(path), sr=sr, offset=offset, duration=duration, res_type=settings.RESAMPLE_TYPE)
+        audio -= audio.mean()
+        audio /= np.abs(audio).max()
+        spec = librosa.feature.melspectrogram(audio, n_fft=n_fft, hop_length=hop_length, n_mels=n_mels)
+        spec = librosa.power_to_db(spec, ref=np.max)
+        spec = spec - spec.min()
+        spec = spec / np.abs(spec).max()
+        chunks = spec_to_chunks(spec, chunk_size, settings.TRUNCATE)
+        tqdm.write(f"Converting {Fore.YELLOW}'{path}'{Fore.RESET}...")
+        output.parent.mkdir(parents=True, exist_ok=True)
+        write_tasks.append(pool.apply_async(np.savez_compressed, [output, *chunks]))
+    for write_task in tqdm(write_tasks, desc="Writing"):
+        write_task.wait()
 
 
 def convert_audio_to_images(path, output_dir, sr=settings.SAMPLE_RATE, start=settings.AUDIO_START,

@@ -72,7 +72,16 @@ def split_spec_to_chunks(spec, chunk_size, window_size):
 
 
 def load_numpy(path):
-    return np.load(path.numpy())
+    with np.load(path.numpy(), allow_pickle=True) as npz:
+        arrays = list(npz.values())
+        return np.array(arrays)
+
+
+def make_windows(array, window_size):
+    dataset = tf.data.Dataset.from_tensor_slices(array)
+    dataset = dataset.window(window_size, shift=1, drop_remainder=True).flat_map(
+        lambda x: x.batch(window_size))
+    return dataset
 
 
 # endregion
@@ -169,38 +178,31 @@ def load_numpy_dataset(data_root, channels_last=settings.CHANNELS_LAST,
     Returns:
         A `tf.data.Dataset` instance
     """
-    num_parallel = settings.NUM_CPUS if data_parallel else None
+    num_parallel = tf.data.experimental.AUTOTUNE if data_parallel else None
     data_root = pathlib.Path(data_root).resolve()
-    directories = list(map(str, filter(pathlib.Path.is_dir, data_root.rglob('*'))))
-    files = [natsorted(map(str, filter(pathlib.Path.is_file, pathlib.Path(d).glob('*')))) for d in directories]
+    files = list(map(str, filter(pathlib.Path.is_file, data_root.rglob('*.np*'))))
     if shuffle_buffer > 1:
         random.shuffle(files)
 
     num_test = int(round(test_fraction * len(files)))
     train_test_datasets = [None, None]
-
     for i in range(2):
-        datasets = [tf.data.Dataset.from_tensor_slices(fs) for fs in
-                    files[-num_test if i else None:None if i else -num_test]]
+        set_files = files[-num_test if i else None:None if i else -num_test]
+        dataset = tf.data.Dataset.from_tensor_slices(set_files)
         if shuffle_buffer > 1:
-            datasets = [dataset.shuffle(shuffle_buffer) for dataset in datasets]
-        datasets = [dataset.map(lambda path: tf.py_function(
+            dataset = dataset.shuffle(shuffle_buffer)
+        dataset = dataset.map(lambda path: tf.py_function(
             load_numpy,
             [path],
             tf.float32
-        ), num_parallel_calls=num_parallel) for dataset in datasets]
-        datasets = [dataset.window(tf.cast(window_size, tf.int64), 1, drop_remainder=True).flat_map(
-            lambda x: x.batch(tf.cast(window_size, tf.int64))
-        ) for dataset in datasets]
-        dataset = reduce(lambda d1, d2: d1.concatenate(d2), datasets)
-        if shuffle_buffer > 1:
-            dataset = dataset.shuffle(shuffle_buffer)
+        ), num_parallel_calls=None)
+        dataset = dataset.interleave(lambda chunks: make_windows(chunks, tf.cast(window_size, tf.int64)),
+                                     num_parallel_calls=None)
         if channels_last:
             dataset = dataset.map(lambda e: tf.transpose(e, perm=[1, 2, 0]), num_parallel_calls=num_parallel)
         dataset = dataset.batch(batch_size)
         if prefetch:
             dataset = dataset.prefetch(prefetch)
         train_test_datasets[i] = dataset
-
     train_dataset, test_dataset = train_test_datasets
     return train_dataset, test_dataset

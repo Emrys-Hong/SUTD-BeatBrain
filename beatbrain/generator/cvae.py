@@ -2,6 +2,8 @@ import os
 import time
 import numpy as np
 import tensorflow as tf
+from pathlib import Path
+from datetime import datetime
 from tqdm import tqdm
 from PIL import Image
 
@@ -40,25 +42,20 @@ def compute_apply_gradients(model, x, optimizer):
 
 
 def visualize_model_outputs(model, epoch, test_input, output):
-    # num_plots = math.ceil(math.sqrt(len(test_input)))
+    output = Path(output)
     predictions = model.sample(eps=test_input)
-    # fig = plt.figure(figsize=(12, 12))
-    # fig.subplots_adjust(hspace=0, wspace=0)
     print(f"Saving Samples Images to {output}")
     for i, pred in enumerate(predictions):
-        # plt.subplot(num_plots, num_plots, i + 1)
-        # plt.imshow(pred[:, :, 0], cmap='gray', vmin=0, vmax=1)
-        # plt.axis('off')
-        out_dir = os.path.join(output, 'progress', str(i))
+        progress_dir = Path(settings.MODEL_WEIGHTS or datetime.now().strftime("%Y%m%d-%H%M%S")).resolve().stem
+        out_dir = output.joinpath(progress_dir).joinpath(str(i + 1))
         os.makedirs(out_dir, exist_ok=True)
         image = Image.fromarray(pred[:, :, 0].numpy(), mode='F')
         image.save(os.path.join(out_dir, f"epoch_{epoch}.tiff"))
-    # plt.show()
 
 
 class CVAE(tf.keras.Model):
     def __init__(self, latent_dim=settings.LATENT_DIMS, num_conv=2, image_dims=(settings.CHUNK_SIZE, settings.N_MELS),
-                 window_size=settings.WINDOW_SIZE, num_filters=32, max_filters=64, kernel_size=3):
+                 window_size=settings.WINDOW_SIZE, num_filters=16, max_filters=64, kernel_size=3):
         super(CVAE, self).__init__()
         input_shape = [*image_dims, window_size]
         self.window_size = window_size
@@ -73,7 +70,8 @@ class CVAE(tf.keras.Model):
                 kernel_size=kernel_size,
                 activation='relu',
                 strides=2,
-                padding='same'
+                padding='same',
+                activity_regularizer=tf.keras.regularizers.l1(0.01)
             )(x)
         latent_shape = x.shape
         x = tf.keras.layers.Flatten()(x)
@@ -92,7 +90,8 @@ class CVAE(tf.keras.Model):
                 kernel_size=kernel_size,
                 strides=2,
                 activation='relu',
-                padding='same'
+                padding='same',
+                activity_regularizer=tf.keras.regularizers.l1(0.01)
             )(x)
         reconstructed = tf.keras.layers.Conv2DTranspose(
             filters=1,
@@ -107,7 +106,7 @@ class CVAE(tf.keras.Model):
         tf.keras.utils.plot_model(self.decoder, to_file='decoder.png', show_shapes=True)
 
         # =====================================
-        # Use this to remove the `tf.split` op
+        # Use this to remove the `tf.split` op in .encode()
         # self.latent_shape = x.shape
         # self.z_mean = tf.keras.layers.Dense(latent_dim, name='z_mean')(x)
         # self.z_log_var = tf.keras.layers.Dense(latent_dim, name='z_log_var')(x)
@@ -138,7 +137,7 @@ class CVAE(tf.keras.Model):
 train_dataset, test_dataset = data_utils.load_numpy_dataset(settings.TRAIN_DATA_DIR, )
 
 optimizer = tf.keras.optimizers.Adam(1e-4)
-model = CVAE(num_conv=3)
+model = CVAE(num_conv=4, kernel_size=5)
 if os.path.exists(settings.MODEL_WEIGHTS):
     print(f"Loading weights from '{settings.MODEL_WEIGHTS}'")
     model.load_weights(settings.MODEL_WEIGHTS)
@@ -174,8 +173,9 @@ for epoch in range(1, settings.EPOCHS + 1):
         visualize_model_outputs(model, epoch, generation_vector, visualiziation_output_dir)
 
 # start = time.time()
-# for i, e in enumerate(train_dataset.take(2000)):
-#     print(i, e.shape)
+# for i, element in enumerate(tqdm(train_dataset.take(2000))):
+#     # print(i, element)
+#     tqdm.write(f"{i + 1}: {element.shape}")
 #     pass
 # print("----------------FINISHED----------------")
 # print(time.time() - start)
