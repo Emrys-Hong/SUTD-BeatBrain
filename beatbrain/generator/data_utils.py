@@ -1,9 +1,11 @@
 import os
+import random
 import pathlib
 import librosa
 from natsort import natsorted
 import numpy as np
 import tensorflow as tf
+from functools import reduce
 from PIL import Image
 
 from .. import settings
@@ -17,7 +19,7 @@ def load_images_as_tensor(files):
     return images_tensor
 
 
-def audio_file_as_tensor(path, sample_rate, resample_type):
+def load_audio(path, sample_rate, resample_type):
     if isinstance(path, tf.Tensor):
         path = path.numpy().decode('utf8')
         sample_rate = sample_rate.numpy()
@@ -69,6 +71,10 @@ def split_spec_to_chunks(spec, chunk_size, window_size):
     return chunks
 
 
+def load_numpy(path):
+    return np.load(path.numpy())
+
+
 # endregion
 
 
@@ -109,7 +115,7 @@ def load_dataset(data_root, sample_rate=settings.SAMPLE_RATE, resample_type=sett
     if shuffle_buffer:
         dataset = dataset.shuffle(shuffle_buffer)
     dataset = dataset.map(lambda path: tf.py_function(
-        audio_file_as_tensor,
+        load_audio,
         [path, sample_rate, resample_type],
         tf.float32
     ), num_parallel_calls=None)
@@ -140,3 +146,61 @@ def load_dataset(data_root, sample_rate=settings.SAMPLE_RATE, resample_type=sett
     if limit:
         dataset = dataset.take(limit)
     return dataset
+
+
+def load_numpy_dataset(data_root, channels_last=settings.CHANNELS_LAST,
+                       window_size=settings.WINDOW_SIZE, batch_size=settings.BATCH_SIZE,
+                       shuffle_buffer=settings.SHUFFLE_BUFFER, prefetch=settings.PREFETCH_DATA,
+                       data_parallel=settings.DATA_PARALLEL, test_fraction=settings.TEST_FRACTION):
+    """
+    Given a directory containing audio files, return a `tf.data.Dataset` instance that generates
+    spectrogram chunk images.
+
+    Args:
+        test_fraction:
+        data_parallel:
+        channels_last:
+        data_root (str): Root directory containing audio files (and ideally nothing else?)
+        window_size: Number of neighboring spectrogram frames to include in each sample - provides local context
+        batch_size: Number of samples per batch
+        shuffle_buffer (bool): Whether to shuffle the dataset
+        prefetch: Number of batches to prefetch in the pipeline. 0 to disable
+
+    Returns:
+        A `tf.data.Dataset` instance
+    """
+    num_parallel = settings.NUM_CPUS if data_parallel else None
+    data_root = pathlib.Path(data_root).resolve()
+    directories = list(map(str, filter(pathlib.Path.is_dir, data_root.rglob('*'))))
+    files = [natsorted(map(str, filter(pathlib.Path.is_file, pathlib.Path(d).glob('*')))) for d in directories]
+    if shuffle_buffer > 1:
+        random.shuffle(files)
+
+    num_test = int(round(test_fraction * len(files)))
+    train_test_datasets = [None, None]
+
+    for i in range(2):
+        datasets = [tf.data.Dataset.from_tensor_slices(fs) for fs in
+                    files[-num_test if i else None:None if i else -num_test]]
+        if shuffle_buffer > 1:
+            datasets = [dataset.shuffle(shuffle_buffer) for dataset in datasets]
+        datasets = [dataset.map(lambda path: tf.py_function(
+            load_numpy,
+            [path],
+            tf.float32
+        ), num_parallel_calls=num_parallel) for dataset in datasets]
+        datasets = [dataset.window(tf.cast(window_size, tf.int64), 1, drop_remainder=True).flat_map(
+            lambda x: x.batch(tf.cast(window_size, tf.int64))
+        ) for dataset in datasets]
+        dataset = reduce(lambda d1, d2: d1.concatenate(d2), datasets)
+        if shuffle_buffer > 1:
+            dataset = dataset.shuffle(shuffle_buffer)
+        if channels_last:
+            dataset = dataset.map(lambda e: tf.transpose(e, perm=[1, 2, 0]), num_parallel_calls=num_parallel)
+        dataset = dataset.batch(batch_size)
+        if prefetch:
+            dataset = dataset.prefetch(prefetch)
+        train_test_datasets[i] = dataset
+
+    train_dataset, test_dataset = train_test_datasets
+    return train_dataset, test_dataset
