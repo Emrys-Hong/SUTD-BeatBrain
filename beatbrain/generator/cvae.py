@@ -55,7 +55,7 @@ def visualize_model_outputs(model, epoch, test_input, output):
 
 class CVAE(tf.keras.Model):
     def __init__(self, latent_dim=settings.LATENT_DIMS, num_conv=2, image_dims=(settings.CHUNK_SIZE, settings.N_MELS),
-                 window_size=settings.WINDOW_SIZE, num_filters=16, max_filters=64, kernel_size=3):
+                 window_size=settings.WINDOW_SIZE, num_filters=32, max_filters=64, kernel_size=3):
         super(CVAE, self).__init__()
         input_shape = [*image_dims, window_size]
         self.window_size = window_size
@@ -94,7 +94,7 @@ class CVAE(tf.keras.Model):
                 activity_regularizer=tf.keras.regularizers.l1(0.01)
             )(x)
         reconstructed = tf.keras.layers.Conv2DTranspose(
-            filters=1,
+            filters=self.window_size,
             kernel_size=3,
             strides=1,
             padding='SAME'
@@ -137,7 +137,7 @@ class CVAE(tf.keras.Model):
 train_dataset, test_dataset = data_utils.load_numpy_dataset(settings.TRAIN_DATA_DIR, )
 
 optimizer = tf.keras.optimizers.Adam(1e-4)
-model = CVAE(num_conv=4, kernel_size=5)
+model = CVAE(num_conv=4)
 if os.path.exists(settings.MODEL_WEIGHTS):
     print(f"Loading weights from '{settings.MODEL_WEIGHTS}'")
     model.load_weights(settings.MODEL_WEIGHTS)
