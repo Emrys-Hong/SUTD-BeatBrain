@@ -5,36 +5,42 @@ import time
 import numpy as np
 import librosa
 import librosa.display
-from PIL import Image
+from pathlib import Path
+from multiprocessing import Pool
 from natsort import natsorted
+from colorama import Fore
+from tqdm import tqdm
+from PIL import Image
 
-from .settings import *
+from . import settings
 
 
 def truepath(path):
-    return os.path.abspath(os.path.realpath(os.path.expanduser(os.path.expandvars(path))))
+    return settings.os.path.abspath(
+        settings.os.path.realpath(settings.os.path.expanduser(settings.os.path.expandvars(path))))
 
 
-def walk_dir(path, depth=WALK_DEPTH):
+def walk_dir(path, depth=settings.WALK_DEPTH):
     path = truepath(path)
     all_dirs = [path]
     dirs = [path]
     while len(dirs):
         next_dirs = []
         for parent in dirs:
-            for f in os.listdir(parent):
-                ff = os.path.join(parent, f)
-                if os.path.isdir(ff):
+            for f in settings.os.listdir(parent):
+                ff = settings.os.path.join(parent, f)
+                if settings.os.path.isdir(ff):
                     next_dirs.append(ff)
                     all_dirs.append(ff)
         dirs = next_dirs
-    all_dirs = [d for d in all_dirs if os.path.relpath(d, start=path).count(os.path.sep) <= depth]
+    all_dirs = [d for d in all_dirs if settings.os.path.relpath(d, start=path).count(settings.os.path.sep) <= depth]
     return all_dirs
 
 
 def list_files(path):
     path = truepath(path)
-    files = [os.path.join(path, f) for f in os.listdir(path) if os.path.isfile(os.path.join(path, f))]
+    files = [settings.os.path.join(path, f) for f in settings.os.listdir(path) if
+             settings.os.path.isfile(settings.os.path.join(path, f))]
     return files
 
 
@@ -47,19 +53,11 @@ def load_audio(path, debug=False, **kwargs):
     return audio, sr
 
 
-def save_audio(audio, path, sr=SAMPLE_RATE, norm=NORMALIZE_AUDIO, fmt=AUDIO_FORMAT):
+def save_audio(audio, path, sr=settings.SAMPLE_RATE, norm=settings.NORMALIZE_AUDIO, fmt=settings.AUDIO_FORMAT):
     path = truepath(path)
     if fmt != 'wav':
         raise NotImplementedError("Only .wav is currently supported.")
     librosa.output.write_wav(path, audio, sr, norm=norm)
-
-
-def stft(audio, debug=False, **kwargs):
-    start = time.time()
-    spec = np.abs(librosa.stft(audio, **kwargs))
-    if debug:
-        print(f"STFT'd {audio.size} samples of audio in {time.time() - start:.2f}s")
-    return spec / spec.max()
 
 
 def griffinlim(spec, debug=False, **kwargs):
@@ -70,30 +68,21 @@ def griffinlim(spec, debug=False, **kwargs):
     return recon
 
 
-def spec_to_chunks(spec, pixels_per_chunk=CHUNK_SIZE, truncate=TRUNCATE, debug=False):
-    start = time.time()
-    remainder = spec.shape[1] % pixels_per_chunk
+def spec_to_chunks(spec, chunk_size, truncate):
+    remainder = spec.shape[1] % chunk_size
     if truncate:
-        last_index = spec.shape[1] - remainder
         spec = spec[:, :-remainder]
     else:
-        spec = np.pad(spec, ((0, 0), (0, pixels_per_chunk - remainder)), mode='constant')
-    if debug:
-        if truncate:
-            print(f"Truncated spectrogram shape: {spec.shape}")
-        else:
-            print(f"Padded spectrogram shape: {spec.shape}")
-    if spec.shape[1] >= pixels_per_chunk:
-        chunks = np.split(spec, spec.shape[1] // pixels_per_chunk, axis=1)
+        spec = np.pad(spec, ((0, 0), (0, chunk_size - remainder)), mode='constant')
+    if spec.shape[1] >= chunk_size:
+        chunks = np.split(spec, spec.shape[1] // chunk_size, axis=1)
     else:
         chunks = [spec]
-    if debug:
-        print(f"Split ({spec.shape[1]} x {spec.shape[0]}) image "
-              f"into {len(chunks)} chunks in {time.time() - start: .2f}s")
     return chunks
 
 
-def save_chunk(chunk, path, mode=IMAGE_MODE, remove_top_row=IMAGE_DROP_TOP, flip_vertical=IMAGE_FLIP):
+def save_chunk(chunk, path, mode=settings.IMAGE_MODE, remove_top_row=settings.IMAGE_DROP_TOP,
+               flip_vertical=settings.IMAGE_FLIP):
     path = truepath(path)
     if remove_top_row:
         chunk = chunk[:-1]
@@ -106,19 +95,20 @@ def save_chunk(chunk, path, mode=IMAGE_MODE, remove_top_row=IMAGE_DROP_TOP, flip
 def save_chunks(chunks, output_dir, basename=None, debug=False):
     start = time.time()
     output_dir = truepath(output_dir)
-    os.makedirs(output_dir, exist_ok=True)
+    settings.os.makedirs(output_dir, exist_ok=True)
     if basename is None:
-        basename = os.path.basename(output_dir)
+        basename = settings.os.path.basename(output_dir)
     if debug:
         print(f"Saving {len(chunks)} chunks to '{output_dir}'...")
     for i, chunk in enumerate(chunks):
-        path = os.path.join(output_dir, f"{basename}_{i + 1}.tiff")
+        path = settings.os.path.join(output_dir, f"{basename}_{i + 1}.tiff")
         save_chunk(chunk, path)
     if debug:
         print(f"Saved {len(chunks)} chunks in {time.time() - start:.2f}s")
 
 
-def load_chunks(paths, restore_top_row=IMAGE_DROP_TOP, flip_vertical=IMAGE_FLIP, concatenate=IMAGE_CONCATENATE):
+def load_chunks(paths, restore_top_row=settings.IMAGE_DROP_TOP, flip_vertical=settings.IMAGE_FLIP,
+                concatenate=settings.IMAGE_CONCATENATE):
     chunks = []
     for path in paths:
         path = truepath(path)
@@ -135,22 +125,62 @@ def load_chunks(paths, restore_top_row=IMAGE_DROP_TOP, flip_vertical=IMAGE_FLIP,
     return chunks
 
 
-def convert_audio_to_images(path, output_dir, sr=SAMPLE_RATE, start=AUDIO_START, duration=AUDIO_DURATION,
-                            res_type=RESAMPLE_TYPE, n_fft=N_FFT, pixels_per_chunk=CHUNK_SIZE,
-                            truncate=TRUNCATE, save=True, debug=False):
+def convert_audio_to_arrays(inp, out_dir, sr=settings.SAMPLE_RATE, offset=settings.AUDIO_START,
+                            duration=settings.AUDIO_DURATION, n_fft=settings.N_FFT, hop_length=settings.HOP_LENGTH,
+                            n_mels=settings.N_MELS, chunk_size=settings.CHUNK_SIZE, skip=0):
+    inp = Path(inp)
+    out_dir = Path(out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    if not inp.exists():
+        raise ValueError(f"Input must be a valid file or directory. Got '{inp}'")
+    elif inp.is_dir():
+        paths = natsorted(filter(Path.is_file, inp.rglob('*')))
+    else:
+        paths = [inp]
+    pool = Pool(None)
+    write_tasks = []
+    print(f"Converting files in {Fore.YELLOW}'{inp}'{Fore.RESET} to Numpy arrays...")
+    print(f"Arrays will be saved in {Fore.YELLOW}'{out_dir}'{Fore.RESET}.\n\n")
+    for i, path in enumerate(tqdm(paths, desc="Converting")):
+        if i < skip:
+            continue
+        path = Path(path)
+        output = out_dir.joinpath(path.relative_to(inp))
+        output = output.parent.joinpath(output.stem)
+        audio, sr = librosa.load(str(path), sr=sr, offset=offset, duration=duration, res_type=settings.RESAMPLE_TYPE)
+        audio -= audio.mean()
+        audio /= np.abs(audio).max()
+        spec = librosa.feature.melspectrogram(audio, n_fft=n_fft, hop_length=hop_length, n_mels=n_mels)
+        spec = librosa.power_to_db(spec, ref=np.max)
+        spec = spec - spec.min()
+        spec = spec / np.abs(spec).max()
+        chunks = spec_to_chunks(spec, chunk_size, settings.TRUNCATE)
+        tqdm.write(f"Converting {Fore.YELLOW}'{path}'{Fore.RESET}...")
+        output.parent.mkdir(parents=True, exist_ok=True)
+        write_tasks.append(pool.apply_async(np.savez_compressed, [output, *chunks]))
+    for write_task in tqdm(write_tasks, desc="Writing"):
+        write_task.wait()
+
+
+def convert_audio_to_images(path, output_dir, sr=settings.SAMPLE_RATE, start=settings.AUDIO_START,
+                            duration=settings.AUDIO_DURATION,
+                            res_type=settings.RESAMPLE_TYPE, n_fft=settings.N_FFT, chunk_size=settings.CHUNK_SIZE,
+                            truncate=settings.TRUNCATE, save=True, debug=False):
     path = truepath(path)
     output_dir = truepath(output_dir)
     audio, sr = load_audio(path, sr=sr, offset=start, duration=duration, res_type=res_type, debug=debug)
-    spec = stft(audio, n_fft=n_fft, debug=debug)
-    chunks = spec_to_chunks(spec, pixels_per_chunk=pixels_per_chunk, truncate=truncate, debug=debug)
+    spec = librosa.stft(audio, n_fft=n_fft)
+    chunks = spec_to_chunks(spec, chunk_size, truncate)
     if save:
-        save_chunks(chunks, os.path.join(output_dir, os.path.splitext(os.path.basename(path))[0]), debug=debug)
+        save_chunks(chunks,
+                    settings.os.path.join(output_dir, settings.os.path.splitext(settings.os.path.basename(path))[0]),
+                    debug=debug)
     return chunks
 
 
-def convert_images_to_audio(paths, output, n_iter=GRIFFINLIM_ITER, n_fft=N_FFT,
-                            sr=SAMPLE_RATE, norm=NORMALIZE_AUDIO,
-                            fmt=AUDIO_FORMAT, save=True, debug=False):
+def convert_images_to_audio(paths, output, n_iter=settings.GRIFFINLIM_ITER, n_fft=settings.N_FFT,
+                            sr=settings.SAMPLE_RATE, norm=settings.NORMALIZE_AUDIO,
+                            fmt=settings.AUDIO_FORMAT, save=True, debug=False):
     paths = [truepath(path) for path in paths]
     output = truepath(output)
     paths = natsorted(paths)

@@ -26,10 +26,10 @@ def test_griffinlim():
 @pytest.mark.parametrize('pixels', [2 ** i for i in range(11)])
 @pytest.mark.parametrize('truncate', [True, False])
 def test_spec_to_chunks_pad(pixels, truncate):
-    pixels_per_chunk = 512
+    chunk_size = 512
     audio, sr = librosa.load(librosa.util.example_audio_file(), duration=1)
     spec = utils.stft(audio)
-    utils.spec_to_chunks(spec, pixels_per_chunk=pixels_per_chunk, truncate=False)
+    utils.spec_to_chunks(spec, chunk_size, False)
 
 
 @pytest.mark.parametrize('duration', [0.1, 1, 8])
