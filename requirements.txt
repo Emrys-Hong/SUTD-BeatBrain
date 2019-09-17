@@ -1,5 +1,5 @@
 seaborn
-tensorflow
+tensorflow>=2.0.0-rc1
 parametrized
 colorama
 tqdm

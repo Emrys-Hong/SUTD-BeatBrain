@@ -160,12 +160,15 @@ def load_dataset(data_root, sample_rate=settings.SAMPLE_RATE, resample_type=sett
 def load_numpy_dataset(data_root, channels_last=settings.CHANNELS_LAST,
                        window_size=settings.WINDOW_SIZE, batch_size=settings.BATCH_SIZE,
                        shuffle_buffer=settings.SHUFFLE_BUFFER, prefetch=settings.PREFETCH_DATA,
-                       data_parallel=settings.DATA_PARALLEL, test_fraction=settings.TEST_FRACTION):
+                       data_parallel=settings.DATA_PARALLEL, test_fraction=settings.TEST_FRACTION,
+                       return_tuples=False, limit=None):
     """
     Given a directory containing audio files, return a `tf.data.Dataset` instance that generates
     spectrogram chunk images.
 
     Args:
+        limit:
+        return_tuples:
         test_fraction:
         data_parallel:
         channels_last:
@@ -189,7 +192,7 @@ def load_numpy_dataset(data_root, channels_last=settings.CHANNELS_LAST,
     for i in range(2):
         set_files = files[-num_test if i else None:None if i else -num_test]
         dataset = tf.data.Dataset.from_tensor_slices(set_files)
-        if shuffle_buffer > 1:
+        if shuffle_buffer > 1 and i == 0:
             dataset = dataset.shuffle(shuffle_buffer)
         dataset = dataset.map(lambda path: tf.py_function(
             load_numpy,
@@ -203,6 +206,8 @@ def load_numpy_dataset(data_root, channels_last=settings.CHANNELS_LAST,
         dataset = dataset.batch(batch_size)
         if prefetch:
             dataset = dataset.prefetch(prefetch)
+        if return_tuples:
+            dataset = dataset.map(lambda el: (el, el))
         train_test_datasets[i] = dataset
     train_dataset, test_dataset = train_test_datasets
     return train_dataset, test_dataset

@@ -134,7 +134,7 @@ class CVAE(tf.keras.Model):
         return eps * tf.exp(logvar * 0.5) + mean
 
 
-train_dataset, test_dataset = data_utils.load_numpy_dataset(settings.TRAIN_DATA_DIR, )
+train_dataset, test_dataset = data_utils.load_numpy_dataset(settings.TRAIN_DATA_DIR)
 
 optimizer = tf.keras.optimizers.Adam(1e-4)
 model = CVAE(num_conv=4)
