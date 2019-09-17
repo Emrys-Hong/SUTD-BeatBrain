@@ -18,26 +18,26 @@ MODEL_WEIGHTS = os.path.join(ROOT_DIR, 'models', 'cvae_pendulum_keras.h5')
 # Don't modify anything below this line unless you know what you're doing.
 # ========================================================================
 # Program Defaults - Best not to touch these
+NUM_CPUS = int(round(os.cpu_count() * 0.75))  # Use a portion of available CPUs
 SAMPLE_RATE = 32768  # Audio files are resampled to this many samples per second
 RESAMPLE_TYPE = 'kaiser_fast'  # Resampling algorithm used by Librosa
 N_FFT = 4096  # STFT window size (in samples)
 HOP_LENGTH = 256  # STFT stride length (in samples)
 N_MELS = 512  # Number of frequency bins per frame (timestep)
-EXAMPLES_TO_GENERATE = 16
-NUM_CPUS = int(round(os.cpu_count() * 0.75))  # Use a portion of available CPUs
 
 # Default Hyperparameters
+TEST_FRACTION = 0.2
 EPOCHS = 100
 LATENT_DIMS = 64
+BATCH_SIZE = 1  # Number of windows per data sample
+WINDOW_SIZE = 1  # Number of spectrogram chunks per window
+EXAMPLES_TO_GENERATE = 16
 
 # Data Options
-TEST_FRACTION = 0.2
 CHANNELS_LAST = True
-WINDOW_SIZE = 1  # Number of spectrogram chunks per window
-BATCH_SIZE = 1  # Number of windows per data sample
 SHUFFLE_BUFFER = 1024  # Buffer size for shuffling data samples
 PREFETCH_DATA = 32  # Data samples to prefetch (resource intensive, but uses GPU more efficiently)
-DATA_PARALLEL = True  # Parallelize CPU-intensive data loading (resource intensive)
+DATA_PARALLEL = True  # Parallelize data pre-processing (can be resource-intensive)
 
 # CLI Defaults
 AUDIO_START = 0
