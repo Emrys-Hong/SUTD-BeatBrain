@@ -2,6 +2,7 @@ import os
 import re
 import glob
 import time
+import enum
 import numpy as np
 import librosa
 import librosa.display
@@ -15,57 +16,32 @@ from PIL import Image
 from . import settings
 
 
-def truepath(path):
-    return settings.os.path.abspath(
-        settings.os.path.realpath(settings.os.path.expanduser(settings.os.path.expandvars(path))))
+class DataType(enum.Enum):
+    AUDIO = 1
+    NUMPY = 2
+    ARRAY = 2
+    IMAGE = 3
+    UNKNOWN = 4
+    AMBIGUOUS = 5
+    ERROR = 6
 
 
-def walk_dir(path, depth=settings.WALK_DEPTH):
-    path = truepath(path)
-    all_dirs = [path]
-    dirs = [path]
-    while len(dirs):
-        next_dirs = []
-        for parent in dirs:
-            for f in settings.os.listdir(parent):
-                ff = settings.os.path.join(parent, f)
-                if settings.os.path.isdir(ff):
-                    next_dirs.append(ff)
-                    all_dirs.append(ff)
-        dirs = next_dirs
-    all_dirs = [d for d in all_dirs if settings.os.path.relpath(d, start=path).count(settings.os.path.sep) <= depth]
-    return all_dirs
+# TODO: Implement this
+def get_data_type(path):
+    """
+    Given a file or directory, return the (homogeneous) data type contained in that path.
+    If there is any ambiguity or uncertainty, such as in the case of unknown formats or multiple types within
+    a directory, a `ValueError` is raised.
 
+    Args:
+        path: Path at which to check the data type
 
-def list_files(path):
-    path = truepath(path)
-    files = [settings.os.path.join(path, f) for f in settings.os.listdir(path) if
-             settings.os.path.isfile(settings.os.path.join(path, f))]
-    return files
-
-
-def load_audio(path, debug=False, **kwargs):
-    start = time.time()
-    path = truepath(path)
-    audio, sr = librosa.load(path, **kwargs)
-    if debug:
-        print(f"Loaded {audio.size / sr:.3f}s of audio at sr={sr} in {time.time() - start:.2f}s")
-    return audio, sr
-
-
-def save_audio(audio, path, sr=settings.SAMPLE_RATE, norm=settings.NORMALIZE_AUDIO, fmt=settings.AUDIO_FORMAT):
-    path = truepath(path)
-    if fmt != 'wav':
-        raise NotImplementedError("Only .wav is currently supported.")
-    librosa.output.write_wav(path, audio, sr, norm=norm)
-
-
-def griffinlim(spec, debug=False, **kwargs):
-    start = time.time()
-    recon = librosa.griffinlim(spec, **kwargs)
-    if debug:
-        print(f"Reconstructed {recon.size} samples in {time.time() - start:.2f}s")
-    return recon
+    Returns:
+        DataType: The type of data contained at the given path (Audio, Numpy, or Image)
+    Raises:
+        ValueError: If the data type at the given path is unknown or ambiguous.
+    """
+    return DataType.AUDIO
 
 
 def spec_to_chunks(spec, chunk_size, truncate):
@@ -81,53 +57,9 @@ def spec_to_chunks(spec, chunk_size, truncate):
     return chunks
 
 
-def save_chunk(chunk, path, mode=settings.IMAGE_MODE, remove_top_row=settings.IMAGE_DROP_TOP,
-               flip_vertical=settings.IMAGE_FLIP):
-    path = truepath(path)
-    if remove_top_row:
-        chunk = chunk[:-1]
-    if flip_vertical:
-        chunk = chunk[::-1]
-    image = Image.fromarray(chunk, mode=mode)
-    image.save(path)
-
-
-def save_chunks(chunks, output_dir, basename=None, debug=False):
-    start = time.time()
-    output_dir = truepath(output_dir)
-    settings.os.makedirs(output_dir, exist_ok=True)
-    if basename is None:
-        basename = settings.os.path.basename(output_dir)
-    if debug:
-        print(f"Saving {len(chunks)} chunks to '{output_dir}'...")
-    for i, chunk in enumerate(chunks):
-        path = settings.os.path.join(output_dir, f"{basename}_{i + 1}.tiff")
-        save_chunk(chunk, path)
-    if debug:
-        print(f"Saved {len(chunks)} chunks in {time.time() - start:.2f}s")
-
-
-def load_chunks(paths, restore_top_row=settings.IMAGE_DROP_TOP, flip_vertical=settings.IMAGE_FLIP,
-                concatenate=settings.IMAGE_CONCATENATE):
-    chunks = []
-    for path in paths:
-        path = truepath(path)
-        chunk = np.asarray(Image.open(path))
-        if flip_vertical:
-            chunk = chunk[::-1]
-        if restore_top_row:
-            restored = np.zeros((chunk.shape[0] + 1, *chunk.shape[1:]), dtype=chunk.dtype)
-            restored[:chunk.shape[0]] = chunk
-            chunk = restored
-        chunks.append(chunk)
-    if concatenate:
-        chunks = np.concatenate(chunks)
-    return chunks
-
-
-def convert_audio_to_arrays(inp, out_dir, sr=settings.SAMPLE_RATE, offset=settings.AUDIO_START,
-                            duration=settings.AUDIO_DURATION, n_fft=settings.N_FFT, hop_length=settings.HOP_LENGTH,
-                            n_mels=settings.N_MELS, chunk_size=settings.CHUNK_SIZE, skip=0):
+def convert_audio_to_numpy(inp, out_dir, sr=settings.SAMPLE_RATE, offset=settings.AUDIO_START,
+                           duration=settings.AUDIO_DURATION, n_fft=settings.N_FFT, hop_length=settings.HOP_LENGTH,
+                           n_mels=settings.N_MELS, chunk_size=settings.CHUNK_SIZE, skip=0):
     inp = Path(inp)
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -162,31 +94,68 @@ def convert_audio_to_arrays(inp, out_dir, sr=settings.SAMPLE_RATE, offset=settin
         write_task.wait()
 
 
-def convert_audio_to_images(path, output_dir, sr=settings.SAMPLE_RATE, start=settings.AUDIO_START,
-                            duration=settings.AUDIO_DURATION,
-                            res_type=settings.RESAMPLE_TYPE, n_fft=settings.N_FFT, chunk_size=settings.CHUNK_SIZE,
-                            truncate=settings.TRUNCATE, save=True, debug=False):
-    path = truepath(path)
-    output_dir = truepath(output_dir)
-    audio, sr = load_audio(path, sr=sr, offset=start, duration=duration, res_type=res_type, debug=debug)
-    spec = librosa.stft(audio, n_fft=n_fft)
-    chunks = spec_to_chunks(spec, chunk_size, truncate)
-    if save:
-        save_chunks(chunks,
-                    settings.os.path.join(output_dir, settings.os.path.splitext(settings.os.path.basename(path))[0]),
-                    debug=debug)
-    return chunks
+# TODO: Implement
+def convert_image_to_numpy(inp, out_dir, flip=settings.IMAGE_FLIP, skip=0):
+    pass
 
 
-def convert_images_to_audio(paths, output, n_iter=settings.GRIFFINLIM_ITER, n_fft=settings.N_FFT,
-                            sr=settings.SAMPLE_RATE, norm=settings.NORMALIZE_AUDIO,
-                            fmt=settings.AUDIO_FORMAT, save=True, debug=False):
-    paths = [truepath(path) for path in paths]
-    output = truepath(output)
-    paths = natsorted(paths)
-    chunks = load_chunks(paths)
-    recon = [griffinlim(chunk, n_iter=n_iter, win_length=n_fft, debug=debug) for chunk in chunks]
-    recon = np.concatenate(recon)
-    if save:
-        save_audio(recon, output, sr=sr, norm=norm, fmt=fmt)
-    return recon
+# TODO: Implement
+def convert_audio_to_image(path, output_dir, sr=settings.SAMPLE_RATE, start=settings.AUDIO_START,
+                           duration=settings.AUDIO_DURATION,
+                           res_type=settings.RESAMPLE_TYPE, n_fft=settings.N_FFT, chunk_size=settings.CHUNK_SIZE,
+                           truncate=settings.TRUNCATE, flip=settings.IMAGE_FLIP, debug=False):
+    pass
+
+
+# TODO: Implement
+def convert_numpy_to_image(inp, out_dir, flip=settings.IMAGE_FLIP, skip=0):
+    pass
+
+
+# TODO: Implement
+def convert_numpy_to_audio(inp, out_dir, sr=settings.SAMPLE_RATE, n_fft=settings.N_FFT,
+                           hop_length=settings.HOP_LENGTH, skip=0):
+    pass
+
+
+# TODO: Implement
+def convert_image_to_audio(inp, out_dir, sr=settings.SAMPLE_RATE, n_fft=settings.N_FFT,
+                           hop_length=settings.HOP_LENGTH, flip=settings.IMAGE_FLIP, skip=0):
+    pass
+
+
+# region Functions to be used by the `click` CLI
+
+def convert_to_numpy(inp, out_dir, sr=settings.SAMPLE_RATE, offset=settings.AUDIO_START,
+                     duration=settings.AUDIO_DURATION, n_fft=settings.N_FFT, hop_length=settings.HOP_LENGTH,
+                     n_mels=settings.N_MELS, chunk_size=settings.CHUNK_SIZE, flip=settings.IMAGE_FLIP, skip=0):
+    dtype = get_data_type(inp)
+    if dtype == DataType.AUDIO:
+        return convert_audio_to_numpy(inp, out_dir, sr=sr, offset=offset, duration=duration, n_fft=n_fft,
+                                      hop_length=hop_length, n_mels=n_mels, chunk_size=chunk_size, skip=skip)
+    elif dtype == DataType.IMAGE:
+        raise NotImplementedError()
+    else:
+        raise ValueError(f"Unknown or ambiguous source data type: '{dtype}'")
+
+
+def convert_to_image(inp, out_dir, **kwargs):
+    dtype = get_data_type(inp)
+    if dtype == DataType.AUDIO:
+        raise NotImplementedError()
+    elif dtype == DataType.NUMPY:
+        raise NotImplementedError()
+    else:
+        raise ValueError(f"Unknown or ambiguous source data type: '{dtype}'")
+
+
+def convert_to_audio(inp, out_dir, **kwargs):
+    dtype = get_data_type(inp)
+    if dtype == DataType.NUMPY:
+        raise NotImplementedError()
+    elif dtype == DataType.IMAGE:
+        raise NotImplementedError()
+    else:
+        raise ValueError(f"Unknown or ambiguous source data type: '{dtype}'")
+
+# endregion
