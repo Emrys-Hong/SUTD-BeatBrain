@@ -37,7 +37,6 @@ def convert(ctx):
 @click.option('--skip', help="Number of samples to skip. Useful when restarting a failed job.", default=0,
               show_default=True)
 def to_numpy(path, output, **kwargs):
-    print(f"{Fore.LIGHTMAGENTA_EX}Checking input types...{Fore.RESET}")
     return utils.convert_to_numpy(path, output, **kwargs)
 
 
@@ -58,7 +57,6 @@ def to_numpy(path, output, **kwargs):
 @click.option('--skip', help="Number of data samples to skip. Useful when restarting a failed job.", default=0,
               show_default=True)
 def to_image(path, output, **kwargs):
-    print(f"{Fore.LIGHTMAGENTA_EX}Checking input types...{Fore.RESET}")
     return utils.convert_to_image(path, output, **kwargs)
 
 
@@ -73,5 +71,4 @@ def to_image(path, output, **kwargs):
 @click.option('--skip', help="Number of samples to skip. Useful when restarting a failed job.", default=0,
               show_default=True)
 def to_audio(path, output, **kwargs):
-    print(f"{Fore.LIGHTMAGENTA_EX}Checking input types...{Fore.RESET}")
     return utils.convert_to_audio(path, output, **kwargs)
