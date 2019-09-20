@@ -142,7 +142,6 @@ def convert_image_to_numpy(inp, out_dir, flip=settings.IMAGE_FLIP, skip=0):
     pass
 
 
-# TODO: Implement
 def convert_audio_to_image(inp, out_dir, sr=settings.SAMPLE_RATE, offset=settings.AUDIO_START,
                            duration=settings.AUDIO_DURATION, res_type=settings.RESAMPLE_TYPE,
                            n_fft=settings.N_FFT, hop_length=settings.HOP_LENGTH, n_mels=settings.N_MELS,
@@ -176,14 +175,36 @@ def convert_audio_to_image(inp, out_dir, sr=settings.SAMPLE_RATE, offset=setting
         output = out_dir.joinpath(path.relative_to(inp))
         output = output.parent.joinpath(output.stem)
         output.mkdir(parents=True, exist_ok=True)
-        for i, chunk in enumerate(chunks):
+        for j, chunk in enumerate(chunks):
             image = Image.fromarray(chunk, mode='F')
-            image.save(output.joinpath(f"{i}.tiff"))
+            image.save(output.joinpath(f"{j}.tiff"))
 
 
-# TODO: Implement
 def convert_numpy_to_image(inp, out_dir, flip=settings.IMAGE_FLIP, skip=0):
-    pass
+    inp = Path(inp)
+    out_dir = Path(out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    if not inp.exists():
+        raise ValueError(f"Input must be a valid file or directory. Got '{inp}'")
+    elif inp.is_dir():
+        paths = natsorted(filter(Path.is_file, inp.rglob('*')))
+    else:
+        paths = [inp]
+    print(f"Converting files in {Fore.YELLOW}'{inp}'{Fore.RESET} to images...")
+    print(f"Images will be saved in {Fore.YELLOW}'{out_dir}'{Fore.RESET}\n")
+    for i, path in enumerate(tqdm(paths, desc="Converting")):
+        if i < skip:
+            continue
+        tqdm.write(f"Converting {Fore.YELLOW}'{path}'{Fore.RESET}...")
+        output = out_dir.joinpath(path.relative_to(inp))
+        output = output.parent.joinpath(output.stem)
+        output.mkdir(parents=True, exist_ok=True)
+        with np.load(path) as npz:
+            for j, chunk in enumerate(npz.values()):
+                if flip:
+                    chunk = chunk[::-1]
+                image = Image.fromarray(chunk, mode='F')
+                image.save(output.joinpath(f"{j}.tiff"))
 
 
 # TODO: Implement
