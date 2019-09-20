@@ -26,22 +26,45 @@ class DataType(enum.Enum):
     ERROR = 6
 
 
+SUPPORTED_EXTENSIONS = {
+    DataType.AUDIO: ['wav', 'flac', 'mp3', 'ogg'],
+    DataType.NUMPY: ['npy', 'npz'],
+    DataType.IMAGE: ['tiff']
+}
+
+
 # TODO: Implement this
 def get_data_type(path):
     """
     Given a file or directory, return the (homogeneous) data type contained in that path.
-    If there is any ambiguity or uncertainty, such as in the case of unknown formats or multiple types within
-    a directory, a `ValueError` is raised.
 
     Args:
         path: Path at which to check the data type
 
     Returns:
         DataType: The type of data contained at the given path (Audio, Numpy, or Image)
-    Raises:
-        ValueError: If the data type at the given path is unknown or ambiguous.
     """
-    return DataType.AUDIO
+    found_types = set()
+    path = Path(path)
+    files = []
+    if path.is_file():
+        files = [path]
+    elif path.is_dir():
+        files = filter(Path.is_file, path.rglob('*'))
+    for f in files:
+        for dtype, exts in SUPPORTED_EXTENSIONS.items():
+            suffix = f.suffix[1:]
+            if suffix in exts:
+                found_types.add(dtype)
+
+    if len(found_types) == 0:
+        dtype = DataType.UNKNOWN
+    elif len(found_types) == 1:
+        dtype = found_types.pop()
+    else:
+        dtype = DataType.AMBIGUOUS
+    print(f"{Fore.LIGHTMAGENTA_EX}Determined input type to be {Fore.CYAN}'{dtype.name}'{Fore.RESET}")
+    return dtype
 
 
 def spec_to_chunks(spec, chunk_size, truncate):
@@ -61,7 +84,7 @@ def convert_audio_to_numpy(inp, out_dir, sr=settings.SAMPLE_RATE, offset=setting
                            duration=settings.AUDIO_DURATION, n_fft=settings.N_FFT, hop_length=settings.HOP_LENGTH,
                            n_mels=settings.N_MELS, chunk_size=settings.CHUNK_SIZE, truncate=settings.TRUNCATE, skip=0):
     inp = Path(inp)
-    out_dir = Path(out_dir)
+    out_dir = Path(out_dir).joinpath('numpy')
     out_dir.mkdir(parents=True, exist_ok=True)
     if not inp.exists():
         raise ValueError(f"Input must be a valid file or directory. Got '{inp}'")
@@ -72,7 +95,7 @@ def convert_audio_to_numpy(inp, out_dir, sr=settings.SAMPLE_RATE, offset=setting
     pool = Pool(None)
     write_tasks = []
     print(f"Converting files in {Fore.YELLOW}'{inp}'{Fore.RESET} to Numpy arrays...")
-    print(f"Arrays will be saved in {Fore.YELLOW}'{out_dir}'{Fore.RESET}.\n\n")
+    print(f"Arrays will be saved in {Fore.YELLOW}'{out_dir}'{Fore.RESET}\n")
     for i, path in enumerate(tqdm(paths, desc="Converting")):
         if i < skip:
             continue
