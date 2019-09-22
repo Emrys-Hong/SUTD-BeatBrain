@@ -24,6 +24,8 @@ RESAMPLE_TYPE = 'kaiser_fast'  # Resampling algorithm used by Librosa
 N_FFT = 4096  # STFT window size (in samples)
 HOP_LENGTH = 256  # STFT stride length (in samples)
 N_MELS = 512  # Number of frequency bins per frame (timestep)
+TOP_DB = 80
+AUDIO_FORMAT = 'wav'
 
 # Default Hyperparameters
 TEST_FRACTION = 0.2
