@@ -23,9 +23,9 @@ def convert(ctx):
 @click.argument('path')
 @click.argument('output')
 @click.option('--sr', help="Rate at which to resample audio", default=settings.SAMPLE_RATE, show_default=True)
-@click.option('--offset', help="Audio start timestamp (seconds)", default=settings.AUDIO_START, show_default=True)
-@click.option('--duration', help="Audio duration (seconds)",
-              default=settings.AUDIO_DURATION, type=int, show_default=True)
+@click.option('--offset', help="Audio start timestamp (seconds)", default=settings.AUDIO_OFFSET, show_default=True)
+@click.option('--duration', help="Audio duration (seconds)", default=settings.AUDIO_DURATION,
+              type=float, show_default=True)
 @click.option('--n_fft', help="Size of FFT window to use", default=settings.N_FFT, show_default=True)
 @click.option('--hop_length', help="Short-time Fourier Transform hop length", default=settings.HOP_LENGTH,
               show_default=True)
@@ -45,9 +45,9 @@ def to_numpy(path, output, **kwargs):
 @click.argument('path')
 @click.argument('output')
 @click.option('--sr', help="Rate at which to resample audio", default=settings.SAMPLE_RATE, show_default=True)
-@click.option('--offset', help="Audio start timestamp (seconds)", default=settings.AUDIO_START, show_default=True)
-@click.option('--duration', help="Audio duration (seconds)",
-              default=settings.AUDIO_DURATION, type=int, show_default=True)
+@click.option('--offset', help="Audio start timestamp (seconds)", default=settings.AUDIO_OFFSET, show_default=True)
+@click.option('--duration', help="Audio duration (seconds)", default=settings.AUDIO_DURATION,
+              type=float, show_default=True)
 @click.option('--n_fft', help="Size of FFT window to use", default=settings.N_FFT, show_default=True)
 @click.option('--hop_length', help="Short-time Fourier Transform hop length", default=settings.HOP_LENGTH,
               show_default=True)
@@ -69,6 +69,10 @@ def to_image(path, output, **kwargs):
 @click.option('--n_fft', help="Size of FFT window to use", default=settings.N_FFT, show_default=True)
 @click.option('--hop_length', help="Short-time Fourier Transform hop length", default=settings.HOP_LENGTH,
               show_default=True)
+@click.option('--offset', help="Start point (in seconds) of reconstructed audio", default=settings.AUDIO_OFFSET,
+              show_default=True)
+@click.option('--duration', help="Maximum seconds of audio to convert", default=settings.AUDIO_DURATION,
+              type=float, show_default=True)
 @click.option('--flip', help="Whether to flip images veritcally", default=settings.IMAGE_FLIP, show_default=True)
 @click.option('--skip', help="Number of samples to skip. Useful when restarting a failed job.", default=0,
               show_default=True)

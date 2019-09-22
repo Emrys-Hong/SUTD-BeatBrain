@@ -42,8 +42,8 @@ PREFETCH_DATA = 32  # Data samples to prefetch (resource intensive, but uses GPU
 DATA_PARALLEL = True  # Parallelize data pre-processing (can be resource-intensive)
 
 # CLI Defaults
-AUDIO_START = 0
+AUDIO_OFFSET = 0.
 AUDIO_DURATION = None
-CHUNK_SIZE = 512  # Number of frames (timesteps) per spectrogram chunk
+CHUNK_SIZE = 512  # Number of frames per spectrogram chunk
 TRUNCATE = False
 IMAGE_FLIP = True
