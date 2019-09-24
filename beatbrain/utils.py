@@ -1,7 +1,3 @@
-import os
-import re
-import glob
-import time
 import enum
 import numpy as np
 import librosa
@@ -47,7 +43,7 @@ def get_data_type(path, raise_exception=False):
     Raises:
         ValueError: If `raise_exception` is True, the number of matched data types is either 0 or >1.
     """
-    print(f"Checking input type(s)...")
+    print(f"Checking input type(s) in {Fore.YELLOW}'{path}'{Fore.RESET}...")
     found_types = set()
     path = Path(path)
     files = []
@@ -161,7 +157,6 @@ def convert_audio_to_image(inp, out_dir, sr=settings.SAMPLE_RATE, offset=setting
         chunks = spec_to_chunks(spec, chunk_size, truncate)
         if flip:
             chunks = [chunk[::-1] for chunk in chunks]
-        tqdm.write(f"Converting {Fore.YELLOW}'{path}'{Fore.RESET}...")
         output = out_dir.joinpath(path.relative_to(inp))
         output = output.parent.joinpath(output.stem)
         output.mkdir(parents=True, exist_ok=True)
@@ -214,14 +209,14 @@ def convert_numpy_to_audio(inp, out_dir, sr=settings.SAMPLE_RATE, n_fft=settings
         if i < skip:
             continue
         tqdm.write(f"Converting {Fore.YELLOW}'{path}'{Fore.RESET}...")
-        output = out_dir.joinpath(path.relative_to(inp))
-        output = output.parent.joinpath(output.name).with_suffix(f'.{fmt}')
-        output.parent.mkdir(parents=True, exist_ok=True)
         with np.load(path) as npz:
             chunks = list(npz.values())
         spec = np.concatenate(chunks, axis=-1)
         spec = librosa.db_to_power(settings.TOP_DB * (spec - 1), ref=50000)
         audio = librosa.feature.inverse.mel_to_audio(spec, sr=sr, n_fft=n_fft, hop_length=hop_length)
+        output = out_dir.joinpath(path.relative_to(inp))
+        output = output.parent.joinpath(output.name).with_suffix(f'.{fmt}')
+        output.parent.mkdir(parents=True, exist_ok=True)
         sf.write(output, audio, sr)
 
 
@@ -239,12 +234,20 @@ def convert_image_to_audio(inp, out_dir, sr=settings.SAMPLE_RATE, n_fft=settings
         paths = natsorted({p.parent for p in paths})
     else:
         paths = [inp]
-    print(f"Converting files in {Fore.YELLOW}'{inp}'{Fore.RESET} to images...")
+    print(f"Converting files in {Fore.YELLOW}'{inp}'{Fore.RESET} to audio...")
     print(f"Images will be saved in {Fore.YELLOW}'{out_dir}'{Fore.RESET}\n")
     for i, path in enumerate(tqdm(paths, desc="Converting")):
         if i < skip:
             continue
-        print(path)
+        tqdm.write(f"Converting {Fore.YELLOW}'{path}'{Fore.RESET}...")
+        files = natsorted(path.glob('*.tiff'))
+        chunks = [np.asarray(Image.open(file)) for file in files]
+        spec = np.concatenate(chunks, axis=-1)
+        if flip:
+            spec = spec[..., ::-1]
+        output = out_dir.joinpath(path.relative_to(inp))
+        output = output.parent.joinpath(output.name)
+        print(spec.shape)
 
 
 # region Functions used by the `click` CLI
