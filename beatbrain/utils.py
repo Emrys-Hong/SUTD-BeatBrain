@@ -245,9 +245,12 @@ def convert_image_to_audio(inp, out_dir, sr=settings.SAMPLE_RATE, n_fft=settings
         spec = np.concatenate(chunks, axis=-1)
         if flip:
             spec = spec[..., ::-1]
+        spec = librosa.db_to_power(settings.TOP_DB * (spec - 1), ref=50000)
+        audio = librosa.feature.inverse.mel_to_audio(spec, sr=sr, n_fft=n_fft, hop_length=hop_length)
         output = out_dir.joinpath(path.relative_to(inp))
-        output = output.parent.joinpath(output.name)
-        print(spec.shape)
+        output = output.parent.joinpath(output.name).with_suffix(f'.{fmt}')
+        output.parent.mkdir(parents=True, exist_ok=True)
+        sf.write(output, audio, sr)
 
 
 # region Functions used by the `click` CLI
