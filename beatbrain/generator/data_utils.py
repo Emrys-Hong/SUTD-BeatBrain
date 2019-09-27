@@ -40,13 +40,13 @@ def audio_to_spec(audio, n_fft, hop_length, n_mels):
         n_mels = n_mels.numpy()
     audio = (audio - audio.mean()) / np.abs(audio).max()
     spec = librosa.feature.melspectrogram(audio, n_fft=n_fft, hop_length=hop_length, n_mels=n_mels)
-    spec = librosa.power_to_db(spec, ref=np.max)
+    spec = librosa.power_to_db(spec, top_db=settings.TOP_DB, ref=np.max)
     spec = spec - spec.min()
     spec = spec / np.abs(spec).max()
     # ==============================================================================
     # RECONSTRUCTION
     # ------------------------------------------------------------------------------
-    # spec = librosa.db_to_power(80 * (spec - 1), ref=np.max)
+    # spec = librosa.db_to_power(settings.TOP_DB * (spec - 1))
     # audio = librosa.feature.inverse.mel_to_audio(spec, sr=sr, n_fft=n_fft, hop_length=hop_length)
     # ==============================================================================
     return spec

@@ -55,7 +55,6 @@ def visualize_model_outputs(mdl, epoch, test_input, output):
         image.save(os.path.join(out_dir, f"epoch_{epoch}.tiff"))
 
 
-@tf.function
 def reparameterize(args):
     mean, logvar = args
     batch = tf.keras.backend.shape(mean)[0]
@@ -139,7 +138,8 @@ outputs = decoder(encoder(inputs)[2])
 vae = tf.keras.Model(inputs, outputs, name='vae')
 vae.compile(
     optimizer=tf.keras.optimizers.Adam(1e-4),
-    loss=vae_loss(z_mean, z_log_var, image_dims)
+    loss=vae_loss(z_mean, z_log_var, image_dims),
+    experimental_run_tf_function=False
 )
 vae.summary()
 # endregion
@@ -147,121 +147,19 @@ vae.summary()
 # region Train and evaluate
 train_dataset, test_dataset = data_utils.load_numpy_dataset(settings.TRAIN_DATA_DIR, return_tuples=True)
 
+start = time.time()
+num_samples = 2000
+with tqdm(train_dataset.take(num_samples), total=num_samples) as pbar:
+    for i, element in enumerate(pbar):
+        # pbar.write(f"{i + 1}: {element[0].shape}")
+        pass
+print("----------------FINISHED----------------")
+print(time.time() - start)
+
+# if Path(settings.MODEL_WEIGHTS).is_file():
+#     vae.load_weights(settings.MODEL_WEIGHTS)
+# vae.fit(train_dataset, epochs=num_epochs, validation_data=(test_dataset, None))
 # endregion
-
-# class CVAE(tf.keras.Model):
-#     def __init__(self, latent_dim=settings.LATENT_DIMS, num_conv=2, image_dims=(settings.CHUNK_SIZE, settings.N_MELS),
-#                  window_size=settings.WINDOW_SIZE, num_filters=32, max_filters=64, kernel_size=3):
-#         super(CVAE, self).__init__()
-#         input_shape = [*image_dims, window_size]
-#         self.window_size = window_size
-#         self.image_dims = image_dims
-#         self.latent_dims = latent_dim
-#
-#         inputs = tf.keras.layers.Input(shape=input_shape, name='encoder_input')
-#         x = inputs
-#         for i in range(num_conv):
-#             x = tf.keras.layers.Conv2D(
-#                 filters=min(num_filters * (i + 1), max_filters),
-#                 kernel_size=kernel_size,
-#                 activation='relu',
-#                 strides=2,
-#                 padding='same',
-#                 activity_regularizer=tf.keras.regularizers.l1(0.01)
-#             )(x)
-#         latent_shape = x.shape
-#         x = tf.keras.layers.Flatten()(x)
-#         latent_vector = tf.keras.layers.Dense(latent_dim + latent_dim)(x)
-#         self.encoder = tf.keras.Model(inputs, latent_vector, name='encoder')
-#
-#         latent_inputs = tf.keras.layers.Input(shape=(latent_dim,))
-#         x = tf.keras.layers.Dense(
-#             latent_shape[1] * latent_shape[2] * latent_shape[3],
-#             activation='relu'
-#         )(latent_inputs)
-#         x = tf.keras.layers.Reshape(latent_shape[1:])(x)
-#         for i in range(num_conv):
-#             x = tf.keras.layers.Conv2DTranspose(
-#                 filters=min(num_filters * (num_conv - i), max_filters),
-#                 kernel_size=kernel_size,
-#                 strides=2,
-#                 activation='relu',
-#                 padding='same',
-#                 activity_regularizer=tf.keras.regularizers.l1(0.01)
-#             )(x)
-#         reconstructed = tf.keras.layers.Conv2DTranspose(
-#             filters=self.window_size,
-#             kernel_size=3,
-#             strides=1,
-#             padding='SAME'
-#         )(x)
-#         self.decoder = tf.keras.Model(latent_inputs, reconstructed, name='decoder')
-#         self.encoder.summary()
-#         self.decoder.summary()
-#         tf.keras.utils.plot_model(self.encoder, to_file='encoder.png', show_shapes=True)
-#         tf.keras.utils.plot_model(self.decoder, to_file='decoder.png', show_shapes=True)
-#
-#         # =====================================
-#         # Use this to remove the `tf.split` op in .encode()
-#         # self.latent_shape = x.shape
-#         # self.z_mean = tf.keras.layers.Dense(latent_dim, name='z_mean')(x)
-#         # self.z_log_var = tf.keras.layers.Dense(latent_dim, name='z_log_var')(x)
-#         # z = self.reparameterize(self.z_mean, self.z_log_var)
-#         # =====================================
-#
-#     def call(self, inputs, training=False):
-#         if training:
-#             latent = self.encode(inputs)
-#
-#         else:
-#             return self.decode(inputs)
-#
-#     @staticmethod
-#     def log_normal_pdf(sample, mean, logvar, raxis=1):
-#         log2pi = tf.math.log(2. * np.pi)
-#         return tf.reduce_sum(
-#             -.5 * ((sample - mean) ** 2. * tf.exp(-logvar) + logvar + log2pi),
-#             axis=raxis)
-#
-#     @tf.function
-#     def compute_loss(self, x):
-#         mean, logvar = self.encode(x)
-#         z = self.reparameterize(mean, logvar)
-#         x_logit = self.decode(z)
-#         cross_ent = tf.nn.sigmoid_cross_entropy_with_logits(logits=x_logit, labels=x)
-#         logpx_z = -tf.reduce_sum(cross_ent, axis=[1, 2, 3])
-#         logpz = self.log_normal_pdf(z, 0., 0.)
-#         logqz_x = self.log_normal_pdf(z, mean, logvar)
-#         return -tf.reduce_mean(logpx_z + logpz - logqz_x)
-#
-#     @tf.function
-#     def compute_apply_gradients(self, x, opt):
-#         with tf.GradientTape() as tape:
-#             loss = self.compute_loss(self, x)
-#         gradients = tape.gradient(loss, self.trainable_variables)
-#         opt.apply_gradients(zip(gradients, self.trainable_variables))
-#
-#     def decode(self, z, apply_sigmoid=False):
-#         logits = self.decoder(z)
-#         if apply_sigmoid:
-#             return tf.sigmoid(logits)
-#         return logits
-#
-#     @tf.function
-#     def sample(self, eps=None):
-#         if eps is None:
-#             eps = tf.random.normal(shape=(100, self.latent_dims))
-#         return self.decode(eps, apply_sigmoid=True)
-#
-#     def encode(self, x):
-#         mean, logvar = tf.split(self.encoder(x), num_or_size_splits=2, axis=1)
-#         return mean, logvar
-#
-#     @staticmethod
-#     def reparameterize(mean, logvar):
-#         eps = tf.random.normal(shape=mean.shape)
-#         return eps * tf.exp(logvar * 0.5) + mean
-
 
 # optimizer = tf.keras.optimizers.Adam(1e-4)
 # model = CVAE(num_conv=4)
@@ -300,11 +198,3 @@ train_dataset, test_dataset = data_utils.load_numpy_dataset(settings.TRAIN_DATA_
 #         model.save_weights(settings.MODEL_WEIGHTS)
 #         # Save Generated Samples
 #         visualize_model_outputs(model, epoch, generation_vector, visualiziation_output_dir)
-
-# start = time.time()
-# for i, element in enumerate(tqdm(train_dataset.take(2000))):
-#     # print(i, element)
-#     tqdm.write(f"{i + 1}: {element.shape}")
-#     pass
-# print("----------------FINISHED----------------")
-# print(time.time() - start)

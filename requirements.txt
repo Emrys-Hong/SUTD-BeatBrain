@@ -1,5 +1,5 @@
+# tensorflow>=2.0.0-rc1 OR tensorflow-gpu>=2.0.0-rc1
 seaborn
-tensorflow>=2.0.0-rc1
 parametrized
 colorama
 tqdm
@@ -12,6 +12,7 @@ Pillow
 natsort
 ffmpeg
 librosa
+soundfile
 pytest
 pydot
 pydotplus
