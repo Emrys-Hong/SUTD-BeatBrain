@@ -125,9 +125,30 @@ def convert_audio_to_numpy(inp, out_dir, sr=settings.SAMPLE_RATE, offset=setting
         np.savez_compressed(output, *chunks)
 
 
-# TODO: Implement
 def convert_image_to_numpy(inp, out_dir, flip=settings.IMAGE_FLIP, skip=0):
-    pass
+    inp = Path(inp)
+    out_dir = Path(out_dir)
+    if not inp.exists():
+        raise ValueError(f"Input must be a valid file or directory. Got '{inp}'")
+    elif inp.is_dir():
+        paths = filter(Path.is_file, inp.rglob('*'))
+        paths = natsorted({p.parent for p in paths})
+    else:
+        paths = [inp]
+    print(f"Converting files in {Fore.YELLOW}'{inp}'{Fore.RESET} to Numpy arrays...")
+    print(f"Arrays will be saved in {Fore.YELLOW}'{out_dir}'{Fore.RESET}\n")
+    for i, path in enumerate(tqdm(paths, desc="Converting")):
+        if i < skip:
+            continue
+        tqdm.write(f"Converting {Fore.YELLOW}'{path}'{Fore.RESET}...")
+        files = natsorted(path.glob('*.tiff'))
+        chunks = [np.asarray(Image.open(file)) for file in files]
+        if flip:
+            chunks = [chunk[..., ::-1] for chunk in chunks]
+        output = out_dir.joinpath(path.relative_to(inp))
+        output = output.parent.joinpath(output.stem)
+        output.parent.mkdir(parents=True, exist_ok=True)
+        np.savez_compressed(output, *chunks)
 
 
 def convert_audio_to_image(inp, out_dir, sr=settings.SAMPLE_RATE, offset=settings.AUDIO_OFFSET,
@@ -220,7 +241,8 @@ def convert_numpy_to_audio(inp, out_dir, sr=settings.SAMPLE_RATE, n_fft=settings
         sf.write(output, audio, sr)
 
 
-# TODO: Implement
+# TODO: Implement offset and duration options
+# TODO: Optimize
 def convert_image_to_audio(inp, out_dir, sr=settings.SAMPLE_RATE, n_fft=settings.N_FFT,
                            hop_length=settings.HOP_LENGTH, fmt=settings.AUDIO_FORMAT,
                            offset=settings.AUDIO_OFFSET, duration=settings.AUDIO_DURATION,
