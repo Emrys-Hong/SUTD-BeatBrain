@@ -181,7 +181,9 @@ def get_audio_output_path(path, out_dir, inp, fmt):
 
 
 # TODO: Optimize
-def chunks_to_audio(chunks, sr, n_fft, hop_length):
+# TODO: Fix offset and duration functionality
+def chunks_to_audio(chunks, sr, n_fft, hop_length, offset, duration):
+    chunks = chunks[int(offset):int(offset + duration)]
     spec = np.concatenate(chunks, axis=-1)
     spec = librosa.db_to_power(settings.TOP_DB * (spec - 1), ref=50000)
     audio = librosa.feature.inverse.mel_to_audio(spec, sr=sr, n_fft=n_fft, hop_length=hop_length)
@@ -255,7 +257,6 @@ def convert_numpy_to_image(inp, out_dir, flip=settings.IMAGE_FLIP, skip=0):
         save_chunks_image(chunks, output, flip)
 
 
-# TODO: Implement offset and duration options
 def convert_numpy_to_audio(inp, out_dir, sr=settings.SAMPLE_RATE, n_fft=settings.N_FFT,
                            hop_length=settings.HOP_LENGTH, fmt=settings.AUDIO_FORMAT,
                            offset=settings.AUDIO_OFFSET, duration=settings.AUDIO_DURATION, skip=0):
@@ -267,12 +268,11 @@ def convert_numpy_to_audio(inp, out_dir, sr=settings.SAMPLE_RATE, n_fft=settings
             continue
         tqdm.write(f"Converting {Fore.YELLOW}'{path}'{Fore.RESET}...")
         chunks = load_numpy_chunks(path)
-        audio = chunks_to_audio(chunks, sr, n_fft, hop_length)
+        audio = chunks_to_audio(chunks, sr, n_fft, hop_length, offset, duration)
         output = get_audio_output_path(path, out_dir, inp, fmt)
         sf.write(output, audio, sr)
 
 
-# TODO: Implement offset and duration options
 def convert_image_to_audio(inp, out_dir, sr=settings.SAMPLE_RATE, n_fft=settings.N_FFT,
                            hop_length=settings.HOP_LENGTH, fmt=settings.AUDIO_FORMAT,
                            offset=settings.AUDIO_OFFSET, duration=settings.AUDIO_DURATION,
@@ -285,7 +285,7 @@ def convert_image_to_audio(inp, out_dir, sr=settings.SAMPLE_RATE, n_fft=settings
             continue
         tqdm.write(f"Converting {Fore.YELLOW}'{path}'{Fore.RESET}...")
         chunks = load_image_chunks(path, flip)
-        audio = chunks_to_audio(chunks, sr, n_fft, hop_length)
+        audio = chunks_to_audio(chunks, sr, n_fft, hop_length, offset, duration)
         output = get_audio_output_path(path, out_dir, inp, fmt)
         sf.write(output, audio, sr)
 
