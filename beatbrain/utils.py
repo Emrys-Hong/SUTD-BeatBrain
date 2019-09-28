@@ -12,6 +12,7 @@ from PIL import Image
 from . import settings
 
 
+# region Data Types
 class DataType(enum.Enum):
     AUDIO = 1
     NUMPY = 2
@@ -69,6 +70,8 @@ def get_data_type(path, raise_exception=False):
     print(f"Determined input type to be {Fore.CYAN}'{dtype.name}'{Fore.RESET}")
     return dtype
 
+
+# endregion
 
 # region Helper functions
 def get_paths(inp, parents):
@@ -167,8 +170,27 @@ def get_image_output_path(path, out_dir, inp):
     return output
 
 
+def get_audio_output_path(path, out_dir, inp, fmt):
+    path = Path(path)
+    out_dir = Path(out_dir)
+    inp = Path(inp)
+    output = out_dir.joinpath(path.relative_to(inp))
+    output = output.parent.joinpath(output.name).with_suffix(f'.{fmt}')
+    output.parent.mkdir(parents=True, exist_ok=True)
+    return output
+
+
+# TODO: Optimize
+def chunks_to_audio(chunks, sr, n_fft, hop_length):
+    spec = np.concatenate(chunks, axis=-1)
+    spec = librosa.db_to_power(settings.TOP_DB * (spec - 1), ref=50000)
+    audio = librosa.feature.inverse.mel_to_audio(spec, sr=sr, n_fft=n_fft, hop_length=hop_length)
+    return audio
+
+
 # endregion
 
+# region Converters
 def convert_audio_to_numpy(inp, out_dir, sr=settings.SAMPLE_RATE, offset=settings.AUDIO_OFFSET,
                            duration=settings.AUDIO_DURATION, res_type=settings.RESAMPLE_TYPE,
                            n_fft=settings.N_FFT, hop_length=settings.HOP_LENGTH,
@@ -189,7 +211,7 @@ def convert_audio_to_numpy(inp, out_dir, sr=settings.SAMPLE_RATE, offset=setting
 
 
 def convert_image_to_numpy(inp, out_dir, flip=settings.IMAGE_FLIP, skip=0):
-    paths = get_paths(inp, parents=True)
+    paths = get_paths(inp, True)
     print(f"Converting files in {Fore.YELLOW}'{inp}'{Fore.RESET} to Numpy arrays...")
     print(f"Arrays will be saved in {Fore.YELLOW}'{out_dir}'{Fore.RESET}\n")
     for i, path in enumerate(tqdm(paths, desc="Converting")):
@@ -233,68 +255,42 @@ def convert_numpy_to_image(inp, out_dir, flip=settings.IMAGE_FLIP, skip=0):
         save_chunks_image(chunks, output, flip)
 
 
-# TODO: Optimize
+# TODO: Implement offset and duration options
 def convert_numpy_to_audio(inp, out_dir, sr=settings.SAMPLE_RATE, n_fft=settings.N_FFT,
                            hop_length=settings.HOP_LENGTH, fmt=settings.AUDIO_FORMAT,
                            offset=settings.AUDIO_OFFSET, duration=settings.AUDIO_DURATION, skip=0):
-    inp = Path(inp)
-    out_dir = Path(out_dir)
-    if not inp.exists():
-        raise ValueError(f"Input must be a valid file or directory. Got '{inp}'")
-    elif inp.is_dir():
-        paths = natsorted(filter(Path.is_file, inp.rglob('*')))
-    else:
-        paths = [inp]
+    paths = get_paths(inp, False)
     print(f"Converting files in {Fore.YELLOW}'{inp}'{Fore.RESET} to audio...")
     print(f"Images will be saved in {Fore.YELLOW}'{out_dir}'{Fore.RESET}\n")
     for i, path in enumerate(tqdm(paths, desc="Converting")):
         if i < skip:
             continue
         tqdm.write(f"Converting {Fore.YELLOW}'{path}'{Fore.RESET}...")
-        with np.load(path) as npz:
-            chunks = list(npz.values())
-        spec = np.concatenate(chunks, axis=-1)
-        spec = librosa.db_to_power(settings.TOP_DB * (spec - 1), ref=50000)
-        audio = librosa.feature.inverse.mel_to_audio(spec, sr=sr, n_fft=n_fft, hop_length=hop_length)
-        output = out_dir.joinpath(path.relative_to(inp))
-        output = output.parent.joinpath(output.name).with_suffix(f'.{fmt}')
-        output.parent.mkdir(parents=True, exist_ok=True)
+        chunks = load_numpy_chunks(path)
+        audio = chunks_to_audio(chunks, sr, n_fft, hop_length)
+        output = get_audio_output_path(path, out_dir, inp, fmt)
         sf.write(output, audio, sr)
 
 
 # TODO: Implement offset and duration options
-# TODO: Optimize
 def convert_image_to_audio(inp, out_dir, sr=settings.SAMPLE_RATE, n_fft=settings.N_FFT,
                            hop_length=settings.HOP_LENGTH, fmt=settings.AUDIO_FORMAT,
                            offset=settings.AUDIO_OFFSET, duration=settings.AUDIO_DURATION,
                            flip=settings.IMAGE_FLIP, skip=0):
-    inp = Path(inp)
-    out_dir = Path(out_dir)
-    if not inp.exists():
-        raise ValueError(f"Input must be a valid file or directory. Got '{inp}'")
-    elif inp.is_dir():
-        paths = filter(Path.is_file, inp.rglob('*'))
-        paths = natsorted({p.parent for p in paths})
-    else:
-        paths = [inp]
+    paths = get_paths(inp, True)
     print(f"Converting files in {Fore.YELLOW}'{inp}'{Fore.RESET} to audio...")
     print(f"Images will be saved in {Fore.YELLOW}'{out_dir}'{Fore.RESET}\n")
     for i, path in enumerate(tqdm(paths, desc="Converting")):
         if i < skip:
             continue
         tqdm.write(f"Converting {Fore.YELLOW}'{path}'{Fore.RESET}...")
-        files = natsorted(path.glob('*.tiff'))
-        chunks = [np.asarray(Image.open(file)) for file in files]
-        spec = np.concatenate(chunks, axis=-1)
-        if flip:
-            spec = spec[..., ::-1]
-        spec = librosa.db_to_power(settings.TOP_DB * (spec - 1), ref=50000)
-        audio = librosa.feature.inverse.mel_to_audio(spec, sr=sr, n_fft=n_fft, hop_length=hop_length)
-        output = out_dir.joinpath(path.relative_to(inp))
-        output = output.parent.joinpath(output.name).with_suffix(f'.{fmt}')
-        output.parent.mkdir(parents=True, exist_ok=True)
+        chunks = load_image_chunks(path, flip)
+        audio = chunks_to_audio(chunks, sr, n_fft, hop_length)
+        output = get_audio_output_path(path, out_dir, inp, fmt)
         sf.write(output, audio, sr)
 
+
+# endregion
 
 # region Functions used by the `click` CLI
 def convert_to_numpy(inp, out_dir, sr=settings.SAMPLE_RATE, offset=settings.AUDIO_OFFSET,
