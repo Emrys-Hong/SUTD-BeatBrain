@@ -44,6 +44,6 @@ DATA_PARALLEL = True  # Parallelize data pre-processing (can be resource-intensi
 # CLI Defaults
 AUDIO_OFFSET = 0.
 AUDIO_DURATION = None
-CHUNK_SIZE = 512  # Number of frames per spectrogram chunk
-TRUNCATE = False
+CHUNK_SIZE = 640  # Number of frames per spectrogram chunk
+TRUNCATE = True
 IMAGE_FLIP = True
