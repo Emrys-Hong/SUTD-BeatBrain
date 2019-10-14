@@ -8,11 +8,11 @@ from datetime import datetime
 
 # Data Locations
 ROOT_DIR = str(pathlib.Path(__file__).parents[1].absolute())  # Project root
-TRAIN_DATA_DIR = os.path.join(ROOT_DIR, "data/array/pendulum")  # Directories containing audio files
+TRAIN_DATA_DIR = os.path.join(ROOT_DIR, "data/fma/numpy")  # Directories containing audio files
 OUTPUT_DIR = os.path.join(ROOT_DIR, "data/output")  # Generated files (audio, images, etc.) go here
 LOG_DIR = os.path.join(ROOT_DIR, "data/logs")  # Python logs go here
 TENSORBOARD_DIR = os.path.join(ROOT_DIR, "data/tensorboard/" + datetime.now().strftime("%Y%m%d-%H%M%S"))
-MODEL_WEIGHTS = os.path.join(ROOT_DIR, 'models', 'cvae_pendulum_keras.h5')
+MODEL_WEIGHTS = os.path.join(ROOT_DIR, 'models', 'dense_recurrent.h5')
 
 # ========================================================================
 # Don't modify anything below this line unless you know what you're doing.

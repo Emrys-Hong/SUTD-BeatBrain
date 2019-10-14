@@ -161,14 +161,14 @@ def load_numpy_dataset(data_root, channels_last=settings.CHANNELS_LAST,
                        window_size=settings.WINDOW_SIZE, batch_size=settings.BATCH_SIZE,
                        shuffle_buffer=settings.SHUFFLE_BUFFER, prefetch=settings.PREFETCH_DATA,
                        data_parallel=settings.DATA_PARALLEL, test_fraction=settings.TEST_FRACTION,
-                       return_tuples=False, limit=None):
+                       return_tuples=False):
     """
     Given a directory containing audio files, return a `tf.data.Dataset` instance that generates
     spectrogram chunk images.
 
     Args:
-        limit:
-        return_tuples:
+        return_tuples: Whether the datasets' outputs should be tuples
+            of identical batches (useful for autoencoder training)
         test_fraction:
         data_parallel:
         channels_last:
@@ -183,6 +183,7 @@ def load_numpy_dataset(data_root, channels_last=settings.CHANNELS_LAST,
     """
     num_parallel = tf.data.experimental.AUTOTUNE if data_parallel else None
     data_root = pathlib.Path(data_root).resolve()
+    assert data_root.exists()
     files = list(map(str, filter(pathlib.Path.is_file, data_root.rglob('*.np*'))))
     if shuffle_buffer > 1:
         random.shuffle(files)
@@ -211,3 +212,14 @@ def load_numpy_dataset(data_root, channels_last=settings.CHANNELS_LAST,
         train_test_datasets[i] = dataset
     train_dataset, test_dataset = train_test_datasets
     return train_dataset, test_dataset
+
+
+def image_to_number_dataset(image_dims, num_samples=200, batch_size=settings.BATCH_SIZE, reconstruction=True):
+    array = np.ones(image_dims, dtype=np.float32)
+    array = array[..., None]
+    dataset = tf.data.Dataset.from_tensors(array)
+    dataset = dataset.repeat(count=num_samples)
+    dataset = dataset.map(lambda a: a * tf.random.uniform(shape=()))
+    dataset = dataset.map(lambda a: (a, a[0, 0, 0]))
+    dataset = dataset.batch(batch_size)
+    return dataset, dataset
