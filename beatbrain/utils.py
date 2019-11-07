@@ -117,7 +117,10 @@ def load_audio(path, sr, offset, duration, res_type):
 
 
 def load_image_chunks(path, flip):
-    files = natsorted(path.glob('*.tiff'))
+    if path.is_file():
+        files = [path]
+    else:
+        files = natsorted(path.glob('*.tiff'))
     chunks = [np.asarray(Image.open(file)) for file in files]
     if flip:
         chunks = [chunk[..., ::-1] for chunk in chunks]
