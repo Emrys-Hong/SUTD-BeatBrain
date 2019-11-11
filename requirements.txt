@@ -1,4 +1,6 @@
 # tensorflow>=2.0.0-rc1 OR tensorflow-gpu>=2.0.0-rc1
+bokeh
+umap
 seaborn
 parametrized
 colorama
