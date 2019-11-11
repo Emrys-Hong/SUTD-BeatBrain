@@ -186,7 +186,7 @@ def get_audio_output_path(path, out_dir, inp, fmt):
 # TODO: Optimize
 # TODO: Fix offset and duration functionality
 def chunks_to_audio(chunks, sr, n_fft, hop_length, offset, duration):
-    chunks = chunks[int(offset):int(offset + duration)]
+    # chunks = chunks[int(offset):int(offset + duration)]
     spec = np.concatenate(chunks, axis=-1)
     spec = librosa.db_to_power(settings.TOP_DB * (spec - 1), ref=50000)
     audio = librosa.feature.inverse.mel_to_audio(spec, sr=sr, n_fft=n_fft, hop_length=hop_length)

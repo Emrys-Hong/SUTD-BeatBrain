@@ -4,7 +4,7 @@ import click
 import numpy as np
 from tqdm import tqdm
 from colorama import Fore
-from joblib import Parallel, delayed
+# from joblib import Parallel, delayed
 
 from .. import settings, utils
 
