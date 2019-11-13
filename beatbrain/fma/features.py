@@ -21,7 +21,7 @@ from scipy import stats
 import pandas as pd
 import librosa
 
-import utils
+from . import utils
 
 
 def columns():

@@ -18,7 +18,7 @@ import pandas as pd
 import librosa
 import mutagen
 
-import utils
+from . import utils
 
 
 TIME = datetime(2017, 4, 1).timestamp()
