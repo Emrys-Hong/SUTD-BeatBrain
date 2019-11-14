@@ -1,3 +1,5 @@
+import warnings
+warnings.simplefilter("ignore", UserWarning)
 import enum
 import numpy as np
 import librosa
@@ -8,6 +10,7 @@ from natsort import natsorted
 from colorama import Fore
 from tqdm import tqdm
 from PIL import Image
+from audioread.exceptions import DecodeError
 
 from . import settings
 
@@ -208,7 +211,11 @@ def convert_audio_to_numpy(inp, out_dir, sr=settings.SAMPLE_RATE, offset=setting
         if i < skip:
             continue
         tqdm.write(f"Converting {Fore.YELLOW}'{path}'{Fore.RESET}...")
-        audio, sr = load_audio(path, sr, offset, duration, res_type)
+        try:
+            audio, sr = load_audio(path, sr, offset, duration, res_type)
+        except DecodeError as e:
+            print(f"Error decoding {path}: {e}")
+            continue
         spec = audio_to_spec(audio, sr, n_fft, hop_length, n_mels)
         chunks = spec_to_chunks(spec, chunk_size, truncate)
         output = get_numpy_output_path(path, out_dir, inp)
@@ -240,7 +247,11 @@ def convert_audio_to_image(inp, out_dir, sr=settings.SAMPLE_RATE, offset=setting
         if i < skip:
             continue
         tqdm.write(f"Converting {Fore.YELLOW}'{path}'{Fore.RESET}...")
-        audio, sr = load_audio(path, sr, offset, duration, res_type)
+        try:
+            audio, sr = load_audio(path, sr, offset, duration, res_type)
+        except DecodeError as e:
+            print(f"Error decoding {path}: {e}")
+            continue
         spec = audio_to_spec(audio, sr, n_fft, hop_length, n_mels)
         chunks = spec_to_chunks(spec, chunk_size, truncate)
         output = get_image_output_path(path, out_dir, inp)
