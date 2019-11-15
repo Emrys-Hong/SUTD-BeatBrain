@@ -202,7 +202,15 @@ def denormalize_spectrogram(spec, top_db=settings.TOP_DB, ref=32768, **kwargs):
     return librosa.db_to_power((spec - 1) * top_db, ref=ref)
 
 
-def save_chunks_numpy(chunks, output, compress):
+def save_arrays(chunks, output, compress=True):
+    """
+    Save a sequence of arrays to a npy or npz file.
+
+    Args:
+        chunks (list): A sequence of arrays to save
+        output (str): The file to save thethe arrays to'
+        compress (bool): Whether to use `np.savez` to compress the output file
+    """
     save = np.savez_compressed if compress else np.savez
     save(str(output), *chunks)
 
@@ -267,7 +275,7 @@ def convert_audio_to_numpy(inp, out_dir, sr=settings.SAMPLE_RATE, offset=setting
         spec = audio_to_spectrogram(audio, sr=sr, n_fft=n_fft, hop_length=hop_length, n_mels=n_mels, normalize=True)
         chunks = split_spectrogram(spec, chunk_size, truncate=truncate)
         output = get_numpy_output_path(path, out_dir, inp)
-        save_chunks_numpy(chunks, output, True)
+        save_arrays(chunks, output)
 
 
 def convert_image_to_numpy(inp, out_dir, flip=settings.IMAGE_FLIP, skip=0):
@@ -280,7 +288,7 @@ def convert_image_to_numpy(inp, out_dir, flip=settings.IMAGE_FLIP, skip=0):
         tqdm.write(f"Converting {Fore.YELLOW}'{path}'{Fore.RESET}...")
         chunks = load_images(path, flip=flip)
         output = get_numpy_output_path(path, out_dir, inp)
-        save_chunks_numpy(chunks, output, True)
+        save_arrays(chunks, output)
 
 
 def convert_audio_to_image(inp, out_dir, sr=settings.SAMPLE_RATE, offset=settings.AUDIO_OFFSET,
