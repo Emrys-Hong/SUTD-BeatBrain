@@ -208,14 +208,22 @@ def save_arrays(chunks, output, compress=True):
 
     Args:
         chunks (list): A sequence of arrays to save
-        output (str): The file to save thethe arrays to'
+        output (str): The file to save the arrays to'
         compress (bool): Whether to use `np.savez` to compress the output file
     """
     save = np.savez_compressed if compress else np.savez
     save(str(output), *chunks)
 
 
-def save_chunks_image(chunks, output, flip):
+def save_images(chunks, output, flip=True):
+    """
+    Save a sequence of arrays as images.
+
+    Args:
+        chunks (list): A sequence of arrays to save as images
+        output (str): The directory to save the images to
+        flip (bool): Whether to flip the images vertically
+    """
     for j, chunk in enumerate(chunks):
         if flip:
             chunk = chunk[::-1]
@@ -311,7 +319,7 @@ def convert_audio_to_image(inp, out_dir, sr=settings.SAMPLE_RATE, offset=setting
         spec = audio_to_spectrogram(audio, sr=sr, n_fft=n_fft, hop_length=hop_length, n_mels=n_mels, normalize=True)
         chunks = split_spectrogram(spec, chunk_size, truncate=truncate)
         output = get_image_output_path(path, out_dir, inp)
-        save_chunks_image(chunks, output, flip)
+        save_images(chunks, output, flip=flip)
 
 
 def convert_numpy_to_image(inp, out_dir, flip=settings.IMAGE_FLIP, skip=0):
@@ -324,7 +332,7 @@ def convert_numpy_to_image(inp, out_dir, flip=settings.IMAGE_FLIP, skip=0):
         tqdm.write(f"Converting {Fore.YELLOW}'{path}'{Fore.RESET}...")
         chunks = load_arrays(path)
         output = get_image_output_path(path, out_dir, inp)
-        save_chunks_image(chunks, output, flip)
+        save_images(chunks, output, flip=flip)
 
 
 def convert_numpy_to_audio(inp, out_dir, sr=settings.SAMPLE_RATE, n_fft=settings.N_FFT,
