@@ -25,7 +25,7 @@ class DataType(enum.Enum):
     ERROR = 6
 
 
-SUPPORTED_EXTENSIONS = {
+EXTENSIONS = {
     DataType.AUDIO: ['wav', 'flac', 'mp3', 'ogg'],  # TODO: Remove artificial limit on supported audio formats
     DataType.NUMPY: ['npy', 'npz'],
     DataType.IMAGE: ['exr']
@@ -55,7 +55,7 @@ def get_data_type(path, raise_exception=False):
     elif path.is_dir():
         files = filter(Path.is_file, path.rglob('*'))
     for f in files:
-        for dtype, exts in SUPPORTED_EXTENSIONS.items():
+        for dtype, exts in EXTENSIONS.items():
             suffix = f.suffix[1:]
             if suffix in exts:
                 found_types.add(dtype)
@@ -97,17 +97,19 @@ def get_paths(inp, parents=False, sort=True):
     return paths
 
 
-def spec_to_chunks(spec, chunk_size, truncate, axis=1):
+def split_spectrogram(spec, chunk_size, truncate=True, axis=1):
     """
-    Split a numpy array along the x-axis into fixed-length chunks
+    Split a numpy array along the chosen axis into fixed-length chunks
 
     Args:
-        spec (np.ndarray):
-        chunk_size (int):
-        truncate (bool):
+        spec (np.ndarray): The array to split along the chosen axis
+        chunk_size (int): The number of elements along the chosen axis in each chunk
+        truncate (bool): If True, the array is truncated such that the number of elements
+                         along the chosen axis is a multiple of `chunk_size`.
+                         Otherwise, the array is zero-padded to a multiple of `chunk_size`.
 
     Returns:
-        list: A list of numpy arrays of equal size
+        list: A list of arrays of equal size
     """
     if spec.shape[axis] >= chunk_size:
         remainder = spec.shape[axis] % chunk_size
@@ -130,7 +132,7 @@ def load_image_chunks(path, flip):
         files = [path]
     else:
         files = []
-        for ext in SUPPORTED_EXTENSIONS[DataType.IMAGE]:
+        for ext in EXTENSIONS[DataType.IMAGE]:
             files.extend(path.glob(f'*.{ext}'))
         files = natsorted(files)
     chunks = [imageio.imread(file) for file in files]
@@ -227,7 +229,7 @@ def convert_audio_to_numpy(inp, out_dir, sr=settings.SAMPLE_RATE, offset=setting
             print(f"Error decoding {path}: {e}")
             continue
         spec = audio_to_spec(audio, sr, n_fft, hop_length, n_mels)
-        chunks = spec_to_chunks(spec, chunk_size, truncate)
+        chunks = split_spectrogram(spec, chunk_size, truncate=truncate)
         output = get_numpy_output_path(path, out_dir, inp)
         save_chunks_numpy(chunks, output, True)
 
@@ -263,7 +265,7 @@ def convert_audio_to_image(inp, out_dir, sr=settings.SAMPLE_RATE, offset=setting
             print(f"Error decoding {path}: {e}")
             continue
         spec = audio_to_spec(audio, sr, n_fft, hop_length, n_mels)
-        chunks = spec_to_chunks(spec, chunk_size, truncate)
+        chunks = split_spectrogram(spec, chunk_size, truncate=truncate)
         output = get_image_output_path(path, out_dir, inp)
         save_chunks_image(chunks, output, flip)
 
