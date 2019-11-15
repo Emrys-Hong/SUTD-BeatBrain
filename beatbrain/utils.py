@@ -3,13 +3,12 @@ warnings.simplefilter("ignore", UserWarning)
 import enum
 import numpy as np
 import librosa
-import librosa.display
+import imageio
 import soundfile as sf
 from pathlib import Path
 from natsort import natsorted
 from colorama import Fore
 from tqdm import tqdm
-from PIL import Image
 from audioread.exceptions import DecodeError
 
 from . import settings
@@ -27,9 +26,9 @@ class DataType(enum.Enum):
 
 
 SUPPORTED_EXTENSIONS = {
-    DataType.AUDIO: ['wav', 'flac', 'mp3', 'ogg'],
+    DataType.AUDIO: ['wav', 'flac', 'mp3', 'ogg'],  # TODO: Remove artificial limit on supported audio formats
     DataType.NUMPY: ['npy', 'npz'],
-    DataType.IMAGE: ['tiff']
+    DataType.IMAGE: ['exr']
 }
 
 
@@ -91,7 +90,7 @@ def get_paths(inp, parents):
     return paths
 
 
-def spec_to_chunks(spec, chunk_size, truncate):
+def spec_to_chunks(spec, chunk_size, truncate, axis=1):
     """
     Split a numpy array along the x-axis into fixed-length chunks
 
@@ -103,13 +102,13 @@ def spec_to_chunks(spec, chunk_size, truncate):
     Returns:
         list: A list of numpy arrays of equal size
     """
-    if spec.shape[-1] >= chunk_size:
-        remainder = spec.shape[-1] % chunk_size
+    if spec.shape[axis] >= chunk_size:
+        remainder = spec.shape[axis] % chunk_size
         if truncate:
             spec = spec[:, :-remainder]
         else:
             spec = np.pad(spec, ((0, 0), (0, chunk_size - remainder)), mode='constant')
-        chunks = np.split(spec, spec.shape[-1] // chunk_size, axis=1)
+        chunks = np.split(spec, spec.shape[axis] // chunk_size, axis=axis)
     else:
         chunks = [spec]
     return chunks
@@ -123,10 +122,13 @@ def load_image_chunks(path, flip):
     if path.is_file():
         files = [path]
     else:
-        files = natsorted(path.glob('*.tiff'))
-    chunks = [np.asarray(Image.open(file)) for file in files]
+        files = []
+        for ext in SUPPORTED_EXTENSIONS[DataType.IMAGE]:
+            files.extend(path.glob(f'*.{ext}'))
+        files = natsorted(files)
+    chunks = [imageio.imread(file) for file in files]
     if flip:
-        chunks = [chunk[..., ::-1] for chunk in chunks]
+        chunks = [chunk[::-1] for chunk in chunks]
     return chunks
 
 
@@ -152,8 +154,9 @@ def save_chunks_numpy(chunks, output, compress):
 
 def save_chunks_image(chunks, output, flip):
     for j, chunk in enumerate(chunks):
-        image = Image.fromarray(chunk[::-1] if flip else chunk, mode='F')
-        image.save(output.joinpath(f"{j}.tiff"))
+        if flip:
+            chunk = chunk[::-1]
+        imageio.imwrite(output.joinpath(f"{j}.exr"), chunk)
 
 
 def get_numpy_output_path(path, out_dir, inp):
