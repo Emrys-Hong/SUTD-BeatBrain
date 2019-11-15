@@ -123,10 +123,6 @@ def split_spectrogram(spec, chunk_size, truncate=True, axis=1):
     return chunks
 
 
-def load_audio(path, sr, offset, duration, res_type):
-    return librosa.load(str(path), sr=sr, offset=offset, duration=duration, res_type=res_type)
-
-
 def load_image_chunks(path, flip):
     if path.is_file():
         files = [path]
@@ -224,7 +220,7 @@ def convert_audio_to_numpy(inp, out_dir, sr=settings.SAMPLE_RATE, offset=setting
             continue
         tqdm.write(f"Converting {Fore.YELLOW}'{path}'{Fore.RESET}...")
         try:
-            audio, sr = load_audio(path, sr, offset, duration, res_type)
+            audio, sr = librosa.load(str(path), sr=sr, offset=offset, duration=duration, res_type=res_type)
         except DecodeError as e:
             print(f"Error decoding {path}: {e}")
             continue
@@ -260,7 +256,7 @@ def convert_audio_to_image(inp, out_dir, sr=settings.SAMPLE_RATE, offset=setting
             continue
         tqdm.write(f"Converting {Fore.YELLOW}'{path}'{Fore.RESET}...")
         try:
-            audio, sr = load_audio(path, sr, offset, duration, res_type)
+            audio, sr = librosa.load(str(path), sr=sr, offset=offset, duration=duration, res_type=res_type)
         except DecodeError as e:
             print(f"Error decoding {path}: {e}")
             continue
