@@ -158,12 +158,48 @@ def load_arrays(path):
         return chunks
 
 
-def audio_to_spec(audio, sr, n_fft, hop_length, n_mels):
-    spec = librosa.feature.melspectrogram(audio, sr=sr, n_fft=n_fft, hop_length=hop_length, n_mels=n_mels)
-    spec = librosa.power_to_db(spec, top_db=settings.TOP_DB, ref=np.max)
-    spec = spec - spec.min()
-    spec = spec / np.abs(spec).max()
+def audio_to_spectrogram(audio, normalize=False, norm_kwargs={}, **kwargs):
+    """
+    Convert an array of audio samples to a mel spectrogram
+
+    Args:
+        audio (np.ndarray): The array of audio samples to convert
+        normalize (bool): Whether to log and normalize the spectrogram to [0, 1] after conversion
+        norm_kwargs (dict): Additional keyword arguments to pass to the spectrogram normalization function
+    """
+    spec = librosa.feature.melspectrogram(audio, **kwargs)
+    if normalize:
+        spec = normalize_spectrogram(spec, **norm_kwargs)
     return spec
+
+
+def normalize_spectrogram(spec, top_db=settings.TOP_DB, ref=np.max, **kwargs):
+    """
+    Log and normalize a mel spectrogram using `librosa.power_to_db()`
+    """
+    return (librosa.power_to_db(spec, top_db=top_db, ref=ref, **kwargs) / top_db) + 1
+
+
+def spectrogram_to_audio(spec, denormalize=False, norm_kwargs={}, **kwargs):
+    """
+    Convert a mel spectrogram to audio
+
+    Args:
+        spec (np.ndarray): The mel spectrogram to convert to audio
+        denormalize (bool): Whether to exp and denormalize the spectrogram before conversion
+        norm_kwargs (dict): Additional keyword arguments to pass to the spectrogram denormalization function
+    """
+    if denormalize:
+        spec = denormalize_spectrogram(spec, **norm_kwargs)
+    audio = librosa.feature.inverse.mel_to_audio(spec, **kwargs)
+    return audio
+
+
+def denormalize_spectrogram(spec, top_db=settings.TOP_DB, ref=32768, **kwargs):
+    """
+    Exp and denormalize a mel spectrogram using `librosa.db_to_power()`
+    """
+    return librosa.db_to_power((spec - 1) * top_db, ref=ref)
 
 
 def save_chunks_numpy(chunks, output, compress):
@@ -208,16 +244,6 @@ def get_audio_output_path(path, out_dir, inp, fmt):
     return output
 
 
-# TODO: Optimize
-# TODO: Fix offset and duration functionality
-def chunks_to_audio(chunks, sr, n_fft, hop_length, offset, duration):
-    # chunks = chunks[int(offset):int(offset + duration)]
-    spec = np.concatenate(chunks, axis=-1)
-    spec = librosa.db_to_power(settings.TOP_DB * (spec - 1), ref=50000)
-    audio = librosa.feature.inverse.mel_to_audio(spec, sr=sr, n_fft=n_fft, hop_length=hop_length)
-    return audio
-
-
 # endregion
 
 # region Converters
@@ -238,7 +264,7 @@ def convert_audio_to_numpy(inp, out_dir, sr=settings.SAMPLE_RATE, offset=setting
         except DecodeError as e:
             print(f"Error decoding {path}: {e}")
             continue
-        spec = audio_to_spec(audio, sr, n_fft, hop_length, n_mels)
+        spec = audio_to_spectrogram(audio, sr=sr, n_fft=n_fft, hop_length=hop_length, n_mels=n_mels, normalize=True)
         chunks = split_spectrogram(spec, chunk_size, truncate=truncate)
         output = get_numpy_output_path(path, out_dir, inp)
         save_chunks_numpy(chunks, output, True)
@@ -274,7 +300,7 @@ def convert_audio_to_image(inp, out_dir, sr=settings.SAMPLE_RATE, offset=setting
         except DecodeError as e:
             print(f"Error decoding {path}: {e}")
             continue
-        spec = audio_to_spec(audio, sr, n_fft, hop_length, n_mels)
+        spec = audio_to_spectrogram(audio, sr=sr, n_fft=n_fft, hop_length=hop_length, n_mels=n_mels, normalize=True)
         chunks = split_spectrogram(spec, chunk_size, truncate=truncate)
         output = get_image_output_path(path, out_dir, inp)
         save_chunks_image(chunks, output, flip)
@@ -304,7 +330,7 @@ def convert_numpy_to_audio(inp, out_dir, sr=settings.SAMPLE_RATE, n_fft=settings
             continue
         tqdm.write(f"Converting {Fore.YELLOW}'{path}'{Fore.RESET}...")
         chunks = load_arrays(path)
-        audio = chunks_to_audio(chunks, sr, n_fft, hop_length, offset, duration)
+        audio = spectrogram_to_audio(np.concatenate(chunks, axis=-1), sr=sr, n_fft=n_fft, hop_length=hop_length, denormalize=True)
         output = get_audio_output_path(path, out_dir, inp, fmt)
         sf.write(output, audio, sr)
 
@@ -321,7 +347,7 @@ def convert_image_to_audio(inp, out_dir, sr=settings.SAMPLE_RATE, n_fft=settings
             continue
         tqdm.write(f"Converting {Fore.YELLOW}'{path}'{Fore.RESET}...")
         chunks = load_images(path, flip=flip)
-        audio = chunks_to_audio(chunks, sr, n_fft, hop_length, offset, duration)
+        audio = spectrogram_to_audio(np.concatenate(chunks, axis=-1), sr=sr, n_fft=n_fft, hop_length=hop_length, denormalize=True)
         output = get_audio_output_path(path, out_dir, inp, fmt)
         sf.write(output, audio, sr)
 
