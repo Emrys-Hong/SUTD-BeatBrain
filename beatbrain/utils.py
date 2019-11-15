@@ -25,7 +25,7 @@ class DataType(enum.Enum):
     ERROR = 6
 
 
-SUPPORTED_EXTENSIONS = {
+EXTENSIONS = {
     DataType.AUDIO: ['wav', 'flac', 'mp3', 'ogg'],  # TODO: Remove artificial limit on supported audio formats
     DataType.NUMPY: ['npy', 'npz'],
     DataType.IMAGE: ['exr']
@@ -55,7 +55,7 @@ def get_data_type(path, raise_exception=False):
     elif path.is_dir():
         files = filter(Path.is_file, path.rglob('*'))
     for f in files:
-        for dtype, exts in SUPPORTED_EXTENSIONS.items():
+        for dtype, exts in EXTENSIONS.items():
             suffix = f.suffix[1:]
             if suffix in exts:
                 found_types.add(dtype)
@@ -76,7 +76,14 @@ def get_data_type(path, raise_exception=False):
 # endregion
 
 # region Helper functions
-def get_paths(inp, parents):
+def get_paths(inp, parents=False, sort=True):
+    """
+    Recursively get the filenames under a given path
+
+    Args:
+        inp (str): The path to search for files under
+        parents (bool): If True, return the unique parent directories of the found files
+    """
     inp = Path(inp)
     if not inp.exists():
         raise ValueError(f"Input must be a valid file or directory. Got '{inp}'")
@@ -84,23 +91,25 @@ def get_paths(inp, parents):
         paths = filter(Path.is_file, inp.rglob('*'))
         if parents:
             paths = {p.parent for p in paths}  # Unique parent directories
-        paths = natsorted(paths)
+        paths = natsorted(paths) if sort else list(paths)
     else:
         paths = [inp]
     return paths
 
 
-def spec_to_chunks(spec, chunk_size, truncate, axis=1):
+def split_spectrogram(spec, chunk_size, truncate=True, axis=1):
     """
-    Split a numpy array along the x-axis into fixed-length chunks
+    Split a numpy array along the chosen axis into fixed-length chunks
 
     Args:
-        spec (np.ndarray):
-        chunk_size (int):
-        truncate (bool):
+        spec (np.ndarray): The array to split along the chosen axis
+        chunk_size (int): The number of elements along the chosen axis in each chunk
+        truncate (bool): If True, the array is truncated such that the number of elements
+                         along the chosen axis is a multiple of `chunk_size`.
+                         Otherwise, the array is zero-padded to a multiple of `chunk_size`.
 
     Returns:
-        list: A list of numpy arrays of equal size
+        list: A list of arrays of equal size
     """
     if spec.shape[axis] >= chunk_size:
         remainder = spec.shape[axis] % chunk_size
@@ -114,16 +123,20 @@ def spec_to_chunks(spec, chunk_size, truncate, axis=1):
     return chunks
 
 
-def load_audio(path, sr, offset, duration, res_type):
-    return librosa.load(str(path), sr=sr, offset=offset, duration=duration, res_type=res_type)
+def load_images(path, flip=True):
+    """
+    Load a sequence of spectrogram images from a directory as arrays
 
-
-def load_image_chunks(path, flip):
+    Args:
+        path: The directory to load images from
+        flip (bool): Whether to flip the images vertically
+    """
+    path = Path(path)
     if path.is_file():
         files = [path]
     else:
         files = []
-        for ext in SUPPORTED_EXTENSIONS[DataType.IMAGE]:
+        for ext in EXTENSIONS[DataType.IMAGE]:
             files.extend(path.glob(f'*.{ext}'))
         files = natsorted(files)
     chunks = [imageio.imread(file) for file in files]
@@ -132,33 +145,93 @@ def load_image_chunks(path, flip):
     return chunks
 
 
-def load_numpy_chunks(path):
+def load_arrays(path):
+    """
+    Load a sequence of spectrogram arrays from a npy or npz file
+
+    Args:
+        path: The file to load arrays from
+    """
     with np.load(path) as npz:
         keys = natsorted(npz.keys())
         chunks = [npz[k] for k in keys]
         return chunks
 
 
-def audio_to_spec(audio, sr, n_fft, hop_length, n_mels):
-    spec = librosa.feature.melspectrogram(audio, sr=sr, n_fft=n_fft, hop_length=hop_length, n_mels=n_mels)
-    spec = librosa.power_to_db(spec, top_db=settings.TOP_DB, ref=np.max)
-    spec = spec - spec.min()
-    spec = spec / np.abs(spec).max()
+def audio_to_spectrogram(audio, normalize=False, norm_kwargs={}, **kwargs):
+    """
+    Convert an array of audio samples to a mel spectrogram
+
+    Args:
+        audio (np.ndarray): The array of audio samples to convert
+        normalize (bool): Whether to log and normalize the spectrogram to [0, 1] after conversion
+        norm_kwargs (dict): Additional keyword arguments to pass to the spectrogram normalization function
+    """
+    spec = librosa.feature.melspectrogram(audio, **kwargs)
+    if normalize:
+        spec = normalize_spectrogram(spec, **norm_kwargs)
     return spec
 
 
-def save_chunks_numpy(chunks, output, compress):
+def spectrogram_to_audio(spec, denormalize=False, norm_kwargs={}, **kwargs):
+    """
+    Convert a mel spectrogram to audio
+
+    Args:
+        spec (np.ndarray): The mel spectrogram to convert to audio
+        denormalize (bool): Whether to exp and denormalize the spectrogram before conversion
+        norm_kwargs (dict): Additional keyword arguments to pass to the spectrogram denormalization function
+    """
+    if denormalize:
+        spec = denormalize_spectrogram(spec, **norm_kwargs)
+    audio = librosa.feature.inverse.mel_to_audio(spec, **kwargs)
+    return audio
+
+
+# TODO: Remove dependency on settings.TOP_DB
+def normalize_spectrogram(spec, top_db=settings.TOP_DB, ref=np.max, **kwargs):
+    """
+    Log and normalize a mel spectrogram using `librosa.power_to_db()`
+    """
+    return (librosa.power_to_db(spec, top_db=top_db, ref=ref, **kwargs) / top_db) + 1
+
+
+def denormalize_spectrogram(spec, top_db=settings.TOP_DB, ref=32768, **kwargs):
+    """
+    Exp and denormalize a mel spectrogram using `librosa.db_to_power()`
+    """
+    return librosa.db_to_power((spec - 1) * top_db, ref=ref)
+
+
+def save_arrays(chunks, output, compress=True):
+    """
+    Save a sequence of arrays to a npy or npz file.
+
+    Args:
+        chunks (list): A sequence of arrays to save
+        output (str): The file to save the arrays to'
+        compress (bool): Whether to use `np.savez` to compress the output file
+    """
     save = np.savez_compressed if compress else np.savez
     save(str(output), *chunks)
 
 
-def save_chunks_image(chunks, output, flip):
+def save_images(chunks, output, flip=True):
+    """
+    Save a sequence of arrays as images.
+
+    Args:
+        chunks (list): A sequence of arrays to save as images
+        output (str): The directory to save the images to
+        flip (bool): Whether to flip the images vertically
+    """
     for j, chunk in enumerate(chunks):
         if flip:
             chunk = chunk[::-1]
         imageio.imwrite(output.joinpath(f"{j}.exr"), chunk)
 
 
+# TODO: Consolidate these functions into one
 def get_numpy_output_path(path, out_dir, inp):
     path = Path(path)
     out_dir = Path(out_dir)
@@ -189,16 +262,6 @@ def get_audio_output_path(path, out_dir, inp, fmt):
     return output
 
 
-# TODO: Optimize
-# TODO: Fix offset and duration functionality
-def chunks_to_audio(chunks, sr, n_fft, hop_length, offset, duration):
-    # chunks = chunks[int(offset):int(offset + duration)]
-    spec = np.concatenate(chunks, axis=-1)
-    spec = librosa.db_to_power(settings.TOP_DB * (spec - 1), ref=50000)
-    audio = librosa.feature.inverse.mel_to_audio(spec, sr=sr, n_fft=n_fft, hop_length=hop_length)
-    return audio
-
-
 # endregion
 
 # region Converters
@@ -207,7 +270,7 @@ def convert_audio_to_numpy(inp, out_dir, sr=settings.SAMPLE_RATE, offset=setting
                            n_fft=settings.N_FFT, hop_length=settings.HOP_LENGTH,
                            n_mels=settings.N_MELS, chunk_size=settings.CHUNK_SIZE,
                            truncate=settings.TRUNCATE, skip=0):
-    paths = get_paths(inp, False)
+    paths = get_paths(inp, parents=False)
     print(f"Converting files in {Fore.YELLOW}'{inp}'{Fore.RESET} to Numpy arrays...")
     print(f"Arrays will be saved in {Fore.YELLOW}'{out_dir}'{Fore.RESET}\n")
     for i, path in enumerate(tqdm(paths, desc="Converting")):
@@ -215,27 +278,27 @@ def convert_audio_to_numpy(inp, out_dir, sr=settings.SAMPLE_RATE, offset=setting
             continue
         tqdm.write(f"Converting {Fore.YELLOW}'{path}'{Fore.RESET}...")
         try:
-            audio, sr = load_audio(path, sr, offset, duration, res_type)
+            audio, sr = librosa.load(str(path), sr=sr, offset=offset, duration=duration, res_type=res_type)
         except DecodeError as e:
             print(f"Error decoding {path}: {e}")
             continue
-        spec = audio_to_spec(audio, sr, n_fft, hop_length, n_mels)
-        chunks = spec_to_chunks(spec, chunk_size, truncate)
+        spec = audio_to_spectrogram(audio, sr=sr, n_fft=n_fft, hop_length=hop_length, n_mels=n_mels, normalize=True)
+        chunks = split_spectrogram(spec, chunk_size, truncate=truncate)
         output = get_numpy_output_path(path, out_dir, inp)
-        save_chunks_numpy(chunks, output, True)
+        save_arrays(chunks, output)
 
 
 def convert_image_to_numpy(inp, out_dir, flip=settings.IMAGE_FLIP, skip=0):
-    paths = get_paths(inp, True)
+    paths = get_paths(inp, parents=True)
     print(f"Converting files in {Fore.YELLOW}'{inp}'{Fore.RESET} to Numpy arrays...")
     print(f"Arrays will be saved in {Fore.YELLOW}'{out_dir}'{Fore.RESET}\n")
     for i, path in enumerate(tqdm(paths, desc="Converting")):
         if i < skip:
             continue
         tqdm.write(f"Converting {Fore.YELLOW}'{path}'{Fore.RESET}...")
-        chunks = load_image_chunks(path, flip)
+        chunks = load_images(path, flip=flip)
         output = get_numpy_output_path(path, out_dir, inp)
-        save_chunks_numpy(chunks, output, True)
+        save_arrays(chunks, output)
 
 
 def convert_audio_to_image(inp, out_dir, sr=settings.SAMPLE_RATE, offset=settings.AUDIO_OFFSET,
@@ -243,7 +306,7 @@ def convert_audio_to_image(inp, out_dir, sr=settings.SAMPLE_RATE, offset=setting
                            n_fft=settings.N_FFT, hop_length=settings.HOP_LENGTH, n_mels=settings.N_MELS,
                            chunk_size=settings.CHUNK_SIZE, truncate=settings.TRUNCATE,
                            flip=settings.IMAGE_FLIP, skip=0):
-    paths = get_paths(inp, False)
+    paths = get_paths(inp, parents=False)
     print(f"Converting files in {Fore.YELLOW}'{inp}'{Fore.RESET} to images...")
     print(f"Images will be saved in {Fore.YELLOW}'{out_dir}'{Fore.RESET}\n")
     for i, path in enumerate(tqdm(paths, desc="Converting")):
@@ -251,41 +314,41 @@ def convert_audio_to_image(inp, out_dir, sr=settings.SAMPLE_RATE, offset=setting
             continue
         tqdm.write(f"Converting {Fore.YELLOW}'{path}'{Fore.RESET}...")
         try:
-            audio, sr = load_audio(path, sr, offset, duration, res_type)
+            audio, sr = librosa.load(str(path), sr=sr, offset=offset, duration=duration, res_type=res_type)
         except DecodeError as e:
             print(f"Error decoding {path}: {e}")
             continue
-        spec = audio_to_spec(audio, sr, n_fft, hop_length, n_mels)
-        chunks = spec_to_chunks(spec, chunk_size, truncate)
+        spec = audio_to_spectrogram(audio, sr=sr, n_fft=n_fft, hop_length=hop_length, n_mels=n_mels, normalize=True)
+        chunks = split_spectrogram(spec, chunk_size, truncate=truncate)
         output = get_image_output_path(path, out_dir, inp)
-        save_chunks_image(chunks, output, flip)
+        save_images(chunks, output, flip=flip)
 
 
 def convert_numpy_to_image(inp, out_dir, flip=settings.IMAGE_FLIP, skip=0):
-    paths = get_paths(inp, False)
+    paths = get_paths(inp, parents=False)
     print(f"Converting files in {Fore.YELLOW}'{inp}'{Fore.RESET} to images...")
     print(f"Images will be saved in {Fore.YELLOW}'{out_dir}'{Fore.RESET}\n")
     for i, path in enumerate(tqdm(paths, desc="Converting")):
         if i < skip:
             continue
         tqdm.write(f"Converting {Fore.YELLOW}'{path}'{Fore.RESET}...")
-        chunks = load_numpy_chunks(path)
+        chunks = load_arrays(path)
         output = get_image_output_path(path, out_dir, inp)
-        save_chunks_image(chunks, output, flip)
+        save_images(chunks, output, flip=flip)
 
 
 def convert_numpy_to_audio(inp, out_dir, sr=settings.SAMPLE_RATE, n_fft=settings.N_FFT,
                            hop_length=settings.HOP_LENGTH, fmt=settings.AUDIO_FORMAT,
                            offset=settings.AUDIO_OFFSET, duration=settings.AUDIO_DURATION, skip=0):
-    paths = get_paths(inp, False)
+    paths = get_paths(inp, parents=False)
     print(f"Converting files in {Fore.YELLOW}'{inp}'{Fore.RESET} to audio...")
     print(f"Images will be saved in {Fore.YELLOW}'{out_dir}'{Fore.RESET}\n")
     for i, path in enumerate(tqdm(paths, desc="Converting")):
         if i < skip:
             continue
         tqdm.write(f"Converting {Fore.YELLOW}'{path}'{Fore.RESET}...")
-        chunks = load_numpy_chunks(path)
-        audio = chunks_to_audio(chunks, sr, n_fft, hop_length, offset, duration)
+        chunks = load_arrays(path)
+        audio = spectrogram_to_audio(np.concatenate(chunks, axis=-1), sr=sr, n_fft=n_fft, hop_length=hop_length, denormalize=True)
         output = get_audio_output_path(path, out_dir, inp, fmt)
         sf.write(output, audio, sr)
 
@@ -294,15 +357,15 @@ def convert_image_to_audio(inp, out_dir, sr=settings.SAMPLE_RATE, n_fft=settings
                            hop_length=settings.HOP_LENGTH, fmt=settings.AUDIO_FORMAT,
                            offset=settings.AUDIO_OFFSET, duration=settings.AUDIO_DURATION,
                            flip=settings.IMAGE_FLIP, skip=0):
-    paths = get_paths(inp, True)
+    paths = get_paths(inp, parents=True)
     print(f"Converting files in {Fore.YELLOW}'{inp}'{Fore.RESET} to audio...")
     print(f"Images will be saved in {Fore.YELLOW}'{out_dir}'{Fore.RESET}\n")
     for i, path in enumerate(tqdm(paths, desc="Converting")):
         if i < skip:
             continue
         tqdm.write(f"Converting {Fore.YELLOW}'{path}'{Fore.RESET}...")
-        chunks = load_image_chunks(path, flip)
-        audio = chunks_to_audio(chunks, sr, n_fft, hop_length, offset, duration)
+        chunks = load_images(path, flip=flip)
+        audio = spectrogram_to_audio(np.concatenate(chunks, axis=-1), sr=sr, n_fft=n_fft, hop_length=hop_length, denormalize=True)
         output = get_audio_output_path(path, out_dir, inp, fmt)
         sf.write(output, audio, sr)
 
