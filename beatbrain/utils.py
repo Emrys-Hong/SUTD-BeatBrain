@@ -173,13 +173,6 @@ def audio_to_spectrogram(audio, normalize=False, norm_kwargs={}, **kwargs):
     return spec
 
 
-def normalize_spectrogram(spec, top_db=settings.TOP_DB, ref=np.max, **kwargs):
-    """
-    Log and normalize a mel spectrogram using `librosa.power_to_db()`
-    """
-    return (librosa.power_to_db(spec, top_db=top_db, ref=ref, **kwargs) / top_db) + 1
-
-
 def spectrogram_to_audio(spec, denormalize=False, norm_kwargs={}, **kwargs):
     """
     Convert a mel spectrogram to audio
@@ -193,6 +186,14 @@ def spectrogram_to_audio(spec, denormalize=False, norm_kwargs={}, **kwargs):
         spec = denormalize_spectrogram(spec, **norm_kwargs)
     audio = librosa.feature.inverse.mel_to_audio(spec, **kwargs)
     return audio
+
+
+# TODO: Remove dependency on settings.TOP_DB
+def normalize_spectrogram(spec, top_db=settings.TOP_DB, ref=np.max, **kwargs):
+    """
+    Log and normalize a mel spectrogram using `librosa.power_to_db()`
+    """
+    return (librosa.power_to_db(spec, top_db=top_db, ref=ref, **kwargs) / top_db) + 1
 
 
 def denormalize_spectrogram(spec, top_db=settings.TOP_DB, ref=32768, **kwargs):
@@ -230,6 +231,7 @@ def save_images(chunks, output, flip=True):
         imageio.imwrite(output.joinpath(f"{j}.exr"), chunk)
 
 
+# TODO: Consolidate these functions into one
 def get_numpy_output_path(path, out_dir, inp):
     path = Path(path)
     out_dir = Path(out_dir)
