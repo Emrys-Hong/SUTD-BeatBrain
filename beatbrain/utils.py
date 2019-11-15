@@ -123,7 +123,15 @@ def split_spectrogram(spec, chunk_size, truncate=True, axis=1):
     return chunks
 
 
-def load_image_chunks(path, flip):
+def load_images(path, flip=True):
+    """
+    Load a sequence of images from a directory.
+
+    Args:
+        path: The directory to load images from
+        flip (bool): Whether to flip the images vertically
+    """
+    path = Path(path)
     if path.is_file():
         files = [path]
     else:
@@ -238,7 +246,7 @@ def convert_image_to_numpy(inp, out_dir, flip=settings.IMAGE_FLIP, skip=0):
         if i < skip:
             continue
         tqdm.write(f"Converting {Fore.YELLOW}'{path}'{Fore.RESET}...")
-        chunks = load_image_chunks(path, flip)
+        chunks = load_images(path, flip=flip)
         output = get_numpy_output_path(path, out_dir, inp)
         save_chunks_numpy(chunks, output, True)
 
@@ -306,7 +314,7 @@ def convert_image_to_audio(inp, out_dir, sr=settings.SAMPLE_RATE, n_fft=settings
         if i < skip:
             continue
         tqdm.write(f"Converting {Fore.YELLOW}'{path}'{Fore.RESET}...")
-        chunks = load_image_chunks(path, flip)
+        chunks = load_images(path, flip=flip)
         audio = chunks_to_audio(chunks, sr, n_fft, hop_length, offset, duration)
         output = get_audio_output_path(path, out_dir, inp, fmt)
         sf.write(output, audio, sr)
