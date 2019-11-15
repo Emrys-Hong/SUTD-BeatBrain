@@ -76,7 +76,14 @@ def get_data_type(path, raise_exception=False):
 # endregion
 
 # region Helper functions
-def get_paths(inp, parents):
+def get_paths(inp, parents=False, sort=True):
+    """
+    Recursively get the filenames under a given path
+
+    Args:
+        inp (str): The path to search for files under
+        parents (bool): If True, return the unique parent directories of the found files
+    """
     inp = Path(inp)
     if not inp.exists():
         raise ValueError(f"Input must be a valid file or directory. Got '{inp}'")
@@ -84,7 +91,7 @@ def get_paths(inp, parents):
         paths = filter(Path.is_file, inp.rglob('*'))
         if parents:
             paths = {p.parent for p in paths}  # Unique parent directories
-        paths = natsorted(paths)
+        paths = natsorted(paths) if sort else list(paths)
     else:
         paths = [inp]
     return paths
@@ -207,7 +214,7 @@ def convert_audio_to_numpy(inp, out_dir, sr=settings.SAMPLE_RATE, offset=setting
                            n_fft=settings.N_FFT, hop_length=settings.HOP_LENGTH,
                            n_mels=settings.N_MELS, chunk_size=settings.CHUNK_SIZE,
                            truncate=settings.TRUNCATE, skip=0):
-    paths = get_paths(inp, False)
+    paths = get_paths(inp, parents=False)
     print(f"Converting files in {Fore.YELLOW}'{inp}'{Fore.RESET} to Numpy arrays...")
     print(f"Arrays will be saved in {Fore.YELLOW}'{out_dir}'{Fore.RESET}\n")
     for i, path in enumerate(tqdm(paths, desc="Converting")):
@@ -226,7 +233,7 @@ def convert_audio_to_numpy(inp, out_dir, sr=settings.SAMPLE_RATE, offset=setting
 
 
 def convert_image_to_numpy(inp, out_dir, flip=settings.IMAGE_FLIP, skip=0):
-    paths = get_paths(inp, True)
+    paths = get_paths(inp, parents=True)
     print(f"Converting files in {Fore.YELLOW}'{inp}'{Fore.RESET} to Numpy arrays...")
     print(f"Arrays will be saved in {Fore.YELLOW}'{out_dir}'{Fore.RESET}\n")
     for i, path in enumerate(tqdm(paths, desc="Converting")):
@@ -243,7 +250,7 @@ def convert_audio_to_image(inp, out_dir, sr=settings.SAMPLE_RATE, offset=setting
                            n_fft=settings.N_FFT, hop_length=settings.HOP_LENGTH, n_mels=settings.N_MELS,
                            chunk_size=settings.CHUNK_SIZE, truncate=settings.TRUNCATE,
                            flip=settings.IMAGE_FLIP, skip=0):
-    paths = get_paths(inp, False)
+    paths = get_paths(inp, parents=False)
     print(f"Converting files in {Fore.YELLOW}'{inp}'{Fore.RESET} to images...")
     print(f"Images will be saved in {Fore.YELLOW}'{out_dir}'{Fore.RESET}\n")
     for i, path in enumerate(tqdm(paths, desc="Converting")):
@@ -262,7 +269,7 @@ def convert_audio_to_image(inp, out_dir, sr=settings.SAMPLE_RATE, offset=setting
 
 
 def convert_numpy_to_image(inp, out_dir, flip=settings.IMAGE_FLIP, skip=0):
-    paths = get_paths(inp, False)
+    paths = get_paths(inp, parents=False)
     print(f"Converting files in {Fore.YELLOW}'{inp}'{Fore.RESET} to images...")
     print(f"Images will be saved in {Fore.YELLOW}'{out_dir}'{Fore.RESET}\n")
     for i, path in enumerate(tqdm(paths, desc="Converting")):
@@ -277,7 +284,7 @@ def convert_numpy_to_image(inp, out_dir, flip=settings.IMAGE_FLIP, skip=0):
 def convert_numpy_to_audio(inp, out_dir, sr=settings.SAMPLE_RATE, n_fft=settings.N_FFT,
                            hop_length=settings.HOP_LENGTH, fmt=settings.AUDIO_FORMAT,
                            offset=settings.AUDIO_OFFSET, duration=settings.AUDIO_DURATION, skip=0):
-    paths = get_paths(inp, False)
+    paths = get_paths(inp, parents=False)
     print(f"Converting files in {Fore.YELLOW}'{inp}'{Fore.RESET} to audio...")
     print(f"Images will be saved in {Fore.YELLOW}'{out_dir}'{Fore.RESET}\n")
     for i, path in enumerate(tqdm(paths, desc="Converting")):
@@ -294,7 +301,7 @@ def convert_image_to_audio(inp, out_dir, sr=settings.SAMPLE_RATE, n_fft=settings
                            hop_length=settings.HOP_LENGTH, fmt=settings.AUDIO_FORMAT,
                            offset=settings.AUDIO_OFFSET, duration=settings.AUDIO_DURATION,
                            flip=settings.IMAGE_FLIP, skip=0):
-    paths = get_paths(inp, True)
+    paths = get_paths(inp, parents=True)
     print(f"Converting files in {Fore.YELLOW}'{inp}'{Fore.RESET} to audio...")
     print(f"Images will be saved in {Fore.YELLOW}'{out_dir}'{Fore.RESET}\n")
     for i, path in enumerate(tqdm(paths, desc="Converting")):
