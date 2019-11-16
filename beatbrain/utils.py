@@ -145,7 +145,7 @@ def load_image(path, flip=True):
     """
     spec = imageio.imread(path)
     if flip:
-        spec = chunk[::-1]
+        spec = spec[::-1]
     return spec
 
 
