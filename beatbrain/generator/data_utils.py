@@ -5,7 +5,6 @@ import librosa
 from natsort import natsorted
 import numpy as np
 import tensorflow as tf
-from functools import reduce
 from PIL import Image
 
 from .. import settings
