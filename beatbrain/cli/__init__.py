@@ -8,9 +8,12 @@ from . import convert
 def main(ctx):
     # click.echo(click.style("BeatBrain", fg='bright_cyan', bold=True, underline=True))
     click.echo(
-        click.style("=========================================================================\n"
-                    "BeatBrain is distributed under the MIT License\n"
-                    "=========================================================================\n", fg='cyan')
+        click.style(
+            "=========================================================================\n"
+            "BeatBrain is distributed under the MIT License\n"
+            "=========================================================================\n",
+            fg="cyan",
+        )
     )
     if ctx.invoked_subcommand is None:
         click.echo(ctx.get_help())

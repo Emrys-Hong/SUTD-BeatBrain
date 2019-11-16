@@ -5,7 +5,6 @@ import librosa
 from natsort import natsorted
 import numpy as np
 import tensorflow as tf
-from functools import reduce
 from PIL import Image
 
 from .. import settings
@@ -13,7 +12,7 @@ from .. import settings
 
 # region Pre-processing Functions
 def load_images_as_tensor(files):
-    files = [file.decode('utf8') for file in files.numpy()]
+    files = [file.decode("utf8") for file in files.numpy()]
     images = np.asarray([np.asarray(Image.open(file)) for file in files])
     images_tensor = tf.convert_to_tensor(images)
     return images_tensor
@@ -21,9 +20,9 @@ def load_images_as_tensor(files):
 
 def load_audio(path, sample_rate, resample_type):
     if isinstance(path, tf.Tensor):
-        path = path.numpy().decode('utf8')
+        path = path.numpy().decode("utf8")
         sample_rate = sample_rate.numpy()
-        resample_type = resample_type.numpy().decode('utf8')
+        resample_type = resample_type.numpy().decode("utf8")
     try:
         audio, sr = librosa.load(path, sr=sample_rate, res_type=resample_type)
     except Exception as e:
@@ -39,7 +38,9 @@ def audio_to_spec(audio, n_fft, hop_length, n_mels):
         hop_length = hop_length.numpy()
         n_mels = n_mels.numpy()
     audio = (audio - audio.mean()) / np.abs(audio).max()
-    spec = librosa.feature.melspectrogram(audio, n_fft=n_fft, hop_length=hop_length, n_mels=n_mels)
+    spec = librosa.feature.melspectrogram(
+        audio, n_fft=n_fft, hop_length=hop_length, n_mels=n_mels
+    )
     spec = librosa.power_to_db(spec, top_db=settings.TOP_DB, ref=np.max)
     spec = spec - spec.min()
     spec = spec / np.abs(spec).max()
@@ -80,19 +81,31 @@ def load_numpy(path):
 def make_windows(array, window_size):
     dataset = tf.data.Dataset.from_tensor_slices(array)
     dataset = dataset.window(window_size, shift=1, drop_remainder=True).flat_map(
-        lambda x: x.batch(window_size))
+        lambda x: x.batch(window_size)
+    )
     return dataset
 
 
 # endregion
 
 
-def load_dataset(data_root, sample_rate=settings.SAMPLE_RATE, resample_type=settings.RESAMPLE_TYPE,
-                 n_fft=settings.N_FFT, hop_length=settings.HOP_LENGTH,
-                 n_mels=settings.N_MELS, chunk_size=settings.CHUNK_SIZE, channels_last=settings.CHANNELS_LAST,
-                 window_size=settings.WINDOW_SIZE, batch_size=settings.BATCH_SIZE,
-                 shuffle_buffer=settings.SHUFFLE_BUFFER, prefetch=settings.PREFETCH_DATA,
-                 cache=False, data_parallel=settings.DATA_PARALLEL, limit=None):
+def load_dataset(
+    data_root,
+    sample_rate=settings.SAMPLE_RATE,
+    resample_type=settings.RESAMPLE_TYPE,
+    n_fft=settings.N_FFT,
+    hop_length=settings.HOP_LENGTH,
+    n_mels=settings.N_MELS,
+    chunk_size=settings.CHUNK_SIZE,
+    channels_last=settings.CHANNELS_LAST,
+    window_size=settings.WINDOW_SIZE,
+    batch_size=settings.BATCH_SIZE,
+    shuffle_buffer=settings.SHUFFLE_BUFFER,
+    prefetch=settings.PREFETCH_DATA,
+    cache=False,
+    data_parallel=settings.DATA_PARALLEL,
+    limit=None,
+):
     """
     Given a directory containing audio files, return a `tf.data.Dataset` instance that generates
     spectrogram chunk images.
@@ -123,30 +136,35 @@ def load_dataset(data_root, sample_rate=settings.SAMPLE_RATE, resample_type=sett
     dataset = tf.data.Dataset.from_tensor_slices(files)
     if shuffle_buffer:
         dataset = dataset.shuffle(shuffle_buffer)
-    dataset = dataset.map(lambda path: tf.py_function(
-        load_audio,
-        [path, sample_rate, resample_type],
-        tf.float32
-    ), num_parallel_calls=None)
+    dataset = dataset.map(
+        lambda path: tf.py_function(
+            load_audio, [path, sample_rate, resample_type], tf.float32
+        ),
+        num_parallel_calls=None,
+    )
     if cache:  # Caching causes train set to be reused as test set???
         if not isinstance(cache, str):
-            cache = ''
+            cache = ""
         else:
             os.makedirs(cache, exist_ok=True)
         dataset = dataset.cache(filename=cache)
-    dataset = dataset.map(lambda audio: tf.py_function(
-        audio_to_spec,
-        [audio, n_fft, hop_length, n_mels],
-        tf.float32
-    ), num_parallel_calls=None)
-    dataset = dataset.map(lambda spec: tf.py_function(
-        split_spec_to_chunks,
-        [spec, chunk_size, window_size],
-        tf.float32
-    ), num_parallel_calls=num_parallel)
+    dataset = dataset.map(
+        lambda audio: tf.py_function(
+            audio_to_spec, [audio, n_fft, hop_length, n_mels], tf.float32
+        ),
+        num_parallel_calls=None,
+    )
+    dataset = dataset.map(
+        lambda spec: tf.py_function(
+            split_spec_to_chunks, [spec, chunk_size, window_size], tf.float32
+        ),
+        num_parallel_calls=num_parallel,
+    )
     dataset = dataset.unbatch()
     if channels_last:
-        dataset = dataset.map(lambda e: tf.transpose(e, perm=[1, 2, 0]), num_parallel_calls=num_parallel)
+        dataset = dataset.map(
+            lambda e: tf.transpose(e, perm=[1, 2, 0]), num_parallel_calls=num_parallel
+        )
     if shuffle_buffer:
         dataset = dataset.shuffle(shuffle_buffer)
     dataset = dataset.batch(batch_size)
@@ -157,11 +175,18 @@ def load_dataset(data_root, sample_rate=settings.SAMPLE_RATE, resample_type=sett
     return dataset
 
 
-def load_numpy_dataset(data_root, channels_last=settings.CHANNELS_LAST,
-                       window_size=settings.WINDOW_SIZE, batch_size=settings.BATCH_SIZE,
-                       shuffle_buffer=settings.SHUFFLE_BUFFER, prefetch=settings.PREFETCH_DATA,
-                       data_parallel=settings.DATA_PARALLEL, test_fraction=settings.TEST_FRACTION,
-                       return_tuples=False, limit=None):
+def load_numpy_dataset(
+    data_root,
+    channels_last=settings.CHANNELS_LAST,
+    window_size=settings.WINDOW_SIZE,
+    batch_size=settings.BATCH_SIZE,
+    shuffle_buffer=settings.SHUFFLE_BUFFER,
+    prefetch=settings.PREFETCH_DATA,
+    data_parallel=settings.DATA_PARALLEL,
+    test_fraction=settings.TEST_FRACTION,
+    return_tuples=False,
+    limit=None,
+):
     """
     Given a directory containing audio files, return a `tf.data.Dataset` instance that generates
     spectrogram chunk images.
@@ -183,26 +208,30 @@ def load_numpy_dataset(data_root, channels_last=settings.CHANNELS_LAST,
     """
     num_parallel = tf.data.experimental.AUTOTUNE if data_parallel else None
     data_root = pathlib.Path(data_root).resolve()
-    files = list(map(str, filter(pathlib.Path.is_file, data_root.rglob('*.np*'))))
+    files = list(map(str, filter(pathlib.Path.is_file, data_root.rglob("*.np*"))))
     if shuffle_buffer > 1:
         random.shuffle(files)
 
     num_test = int(round(test_fraction * len(files)))
     train_test_datasets = [None, None]
     for i in range(2):
-        set_files = files[-num_test if i else None:None if i else -num_test]
+        set_files = files[-num_test if i else None : None if i else -num_test]
         dataset = tf.data.Dataset.from_tensor_slices(set_files)
         if shuffle_buffer > 1 and i == 0:
             dataset = dataset.shuffle(shuffle_buffer)
-        dataset = dataset.map(lambda path: tf.py_function(
-            load_numpy,
-            [path],
-            tf.float32
-        ), num_parallel_calls=None)
-        dataset = dataset.interleave(lambda chunks: make_windows(chunks, tf.cast(window_size, tf.int64)),
-                                     num_parallel_calls=None)
+        dataset = dataset.map(
+            lambda path: tf.py_function(load_numpy, [path], tf.float32),
+            num_parallel_calls=None,
+        )
+        dataset = dataset.interleave(
+            lambda chunks: make_windows(chunks, tf.cast(window_size, tf.int64)),
+            num_parallel_calls=None,
+        )
         if channels_last:
-            dataset = dataset.map(lambda e: tf.transpose(e, perm=[1, 2, 0]), num_parallel_calls=num_parallel)
+            dataset = dataset.map(
+                lambda e: tf.transpose(e, perm=[1, 2, 0]),
+                num_parallel_calls=num_parallel,
+            )
         dataset = dataset.batch(batch_size)
         if prefetch:
             dataset = dataset.prefetch(prefetch)
