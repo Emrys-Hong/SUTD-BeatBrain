@@ -1,4 +1,5 @@
 import warnings
+
 warnings.simplefilter("ignore", UserWarning)
 import enum
 import numpy as np
@@ -26,9 +27,14 @@ class DataType(enum.Enum):
 
 
 EXTENSIONS = {
-    DataType.AUDIO: ['wav', 'flac', 'mp3', 'ogg'],  # TODO: Remove artificial limit on supported audio formats
-    DataType.NUMPY: ['npy', 'npz'],
-    DataType.IMAGE: ['exr']
+    DataType.AUDIO: [
+        "wav",
+        "flac",
+        "mp3",
+        "ogg",
+    ],  # TODO: Remove artificial limit on supported audio formats
+    DataType.NUMPY: ["npy", "npz"],
+    DataType.IMAGE: ["exr"],
 }
 
 
@@ -53,7 +59,7 @@ def get_data_type(path, raise_exception=False):
     if path.is_file():
         files = [path]
     elif path.is_dir():
-        files = filter(Path.is_file, path.rglob('*'))
+        files = filter(Path.is_file, path.rglob("*"))
     for f in files:
         for dtype, exts in EXTENSIONS.items():
             suffix = f.suffix[1:]
@@ -62,13 +68,17 @@ def get_data_type(path, raise_exception=False):
     if len(found_types) == 0:
         dtype = DataType.UNKNOWN
         if raise_exception:
-            raise ValueError(f"Unknown source data type. No known file types we matched.")
+            raise ValueError(
+                f"Unknown source data type. No known file types we matched."
+            )
     elif len(found_types) == 1:
         dtype = found_types.pop()
     else:
         dtype = DataType.AMBIGUOUS
         if raise_exception:
-            raise ValueError(f"Ambiguous source data type. The following types were matched: {found_types}")
+            raise ValueError(
+                f"Ambiguous source data type. The following types were matched: {found_types}"
+            )
     print(f"Determined input type to be {Fore.CYAN}'{dtype.name}'{Fore.RESET}")
     return dtype
 
@@ -88,7 +98,7 @@ def get_paths(inp, parents=False, sort=True):
     if not inp.exists():
         raise ValueError(f"Input must be a valid file or directory. Got '{inp}'")
     elif inp.is_dir():
-        paths = filter(Path.is_file, inp.rglob('*'))
+        paths = filter(Path.is_file, inp.rglob("*"))
         if parents:
             paths = {p.parent for p in paths}  # Unique parent directories
         paths = natsorted(paths) if sort else list(paths)
@@ -116,7 +126,7 @@ def split_spectrogram(spec, chunk_size, truncate=True, axis=1):
         if truncate:
             spec = spec[:, :-remainder]
         else:
-            spec = np.pad(spec, ((0, 0), (0, chunk_size - remainder)), mode='constant')
+            spec = np.pad(spec, ((0, 0), (0, chunk_size - remainder)), mode="constant")
         chunks = np.split(spec, spec.shape[axis] // chunk_size, axis=axis)
     else:
         chunks = [spec]
@@ -137,7 +147,7 @@ def load_images(path, flip=True):
     else:
         files = []
         for ext in EXTENSIONS[DataType.IMAGE]:
-            files.extend(path.glob(f'*.{ext}'))
+            files.extend(path.glob(f"*.{ext}"))
         files = natsorted(files)
     chunks = [imageio.imread(file) for file in files]
     if flip:
@@ -257,7 +267,7 @@ def get_audio_output_path(path, out_dir, inp, fmt):
     out_dir = Path(out_dir)
     inp = Path(inp)
     output = out_dir.joinpath(path.relative_to(inp))
-    output = output.parent.joinpath(output.name).with_suffix(f'.{fmt}')
+    output = output.parent.joinpath(output.name).with_suffix(f".{fmt}")
     output.parent.mkdir(parents=True, exist_ok=True)
     return output
 
@@ -265,11 +275,20 @@ def get_audio_output_path(path, out_dir, inp, fmt):
 # endregion
 
 # region Converters
-def convert_audio_to_numpy(inp, out_dir, sr=settings.SAMPLE_RATE, offset=settings.AUDIO_OFFSET,
-                           duration=settings.AUDIO_DURATION, res_type=settings.RESAMPLE_TYPE,
-                           n_fft=settings.N_FFT, hop_length=settings.HOP_LENGTH,
-                           n_mels=settings.N_MELS, chunk_size=settings.CHUNK_SIZE,
-                           truncate=settings.TRUNCATE, skip=0):
+def convert_audio_to_numpy(
+    inp,
+    out_dir,
+    sr=settings.SAMPLE_RATE,
+    offset=settings.AUDIO_OFFSET,
+    duration=settings.AUDIO_DURATION,
+    res_type=settings.RESAMPLE_TYPE,
+    n_fft=settings.N_FFT,
+    hop_length=settings.HOP_LENGTH,
+    n_mels=settings.N_MELS,
+    chunk_size=settings.CHUNK_SIZE,
+    truncate=settings.TRUNCATE,
+    skip=0,
+):
     paths = get_paths(inp, parents=False)
     print(f"Converting files in {Fore.YELLOW}'{inp}'{Fore.RESET} to Numpy arrays...")
     print(f"Arrays will be saved in {Fore.YELLOW}'{out_dir}'{Fore.RESET}\n")
@@ -278,11 +297,20 @@ def convert_audio_to_numpy(inp, out_dir, sr=settings.SAMPLE_RATE, offset=setting
             continue
         tqdm.write(f"Converting {Fore.YELLOW}'{path}'{Fore.RESET}...")
         try:
-            audio, sr = librosa.load(str(path), sr=sr, offset=offset, duration=duration, res_type=res_type)
+            audio, sr = librosa.load(
+                str(path), sr=sr, offset=offset, duration=duration, res_type=res_type
+            )
         except DecodeError as e:
             print(f"Error decoding {path}: {e}")
             continue
-        spec = audio_to_spectrogram(audio, sr=sr, n_fft=n_fft, hop_length=hop_length, n_mels=n_mels, normalize=True)
+        spec = audio_to_spectrogram(
+            audio,
+            sr=sr,
+            n_fft=n_fft,
+            hop_length=hop_length,
+            n_mels=n_mels,
+            normalize=True,
+        )
         chunks = split_spectrogram(spec, chunk_size, truncate=truncate)
         output = get_numpy_output_path(path, out_dir, inp)
         save_arrays(chunks, output)
@@ -301,11 +329,21 @@ def convert_image_to_numpy(inp, out_dir, flip=settings.IMAGE_FLIP, skip=0):
         save_arrays(chunks, output)
 
 
-def convert_audio_to_image(inp, out_dir, sr=settings.SAMPLE_RATE, offset=settings.AUDIO_OFFSET,
-                           duration=settings.AUDIO_DURATION, res_type=settings.RESAMPLE_TYPE,
-                           n_fft=settings.N_FFT, hop_length=settings.HOP_LENGTH, n_mels=settings.N_MELS,
-                           chunk_size=settings.CHUNK_SIZE, truncate=settings.TRUNCATE,
-                           flip=settings.IMAGE_FLIP, skip=0):
+def convert_audio_to_image(
+    inp,
+    out_dir,
+    sr=settings.SAMPLE_RATE,
+    offset=settings.AUDIO_OFFSET,
+    duration=settings.AUDIO_DURATION,
+    res_type=settings.RESAMPLE_TYPE,
+    n_fft=settings.N_FFT,
+    hop_length=settings.HOP_LENGTH,
+    n_mels=settings.N_MELS,
+    chunk_size=settings.CHUNK_SIZE,
+    truncate=settings.TRUNCATE,
+    flip=settings.IMAGE_FLIP,
+    skip=0,
+):
     paths = get_paths(inp, parents=False)
     print(f"Converting files in {Fore.YELLOW}'{inp}'{Fore.RESET} to images...")
     print(f"Images will be saved in {Fore.YELLOW}'{out_dir}'{Fore.RESET}\n")
@@ -314,11 +352,20 @@ def convert_audio_to_image(inp, out_dir, sr=settings.SAMPLE_RATE, offset=setting
             continue
         tqdm.write(f"Converting {Fore.YELLOW}'{path}'{Fore.RESET}...")
         try:
-            audio, sr = librosa.load(str(path), sr=sr, offset=offset, duration=duration, res_type=res_type)
+            audio, sr = librosa.load(
+                str(path), sr=sr, offset=offset, duration=duration, res_type=res_type
+            )
         except DecodeError as e:
             print(f"Error decoding {path}: {e}")
             continue
-        spec = audio_to_spectrogram(audio, sr=sr, n_fft=n_fft, hop_length=hop_length, n_mels=n_mels, normalize=True)
+        spec = audio_to_spectrogram(
+            audio,
+            sr=sr,
+            n_fft=n_fft,
+            hop_length=hop_length,
+            n_mels=n_mels,
+            normalize=True,
+        )
         chunks = split_spectrogram(spec, chunk_size, truncate=truncate)
         output = get_image_output_path(path, out_dir, inp)
         save_images(chunks, output, flip=flip)
@@ -337,9 +384,17 @@ def convert_numpy_to_image(inp, out_dir, flip=settings.IMAGE_FLIP, skip=0):
         save_images(chunks, output, flip=flip)
 
 
-def convert_numpy_to_audio(inp, out_dir, sr=settings.SAMPLE_RATE, n_fft=settings.N_FFT,
-                           hop_length=settings.HOP_LENGTH, fmt=settings.AUDIO_FORMAT,
-                           offset=settings.AUDIO_OFFSET, duration=settings.AUDIO_DURATION, skip=0):
+def convert_numpy_to_audio(
+    inp,
+    out_dir,
+    sr=settings.SAMPLE_RATE,
+    n_fft=settings.N_FFT,
+    hop_length=settings.HOP_LENGTH,
+    fmt=settings.AUDIO_FORMAT,
+    offset=settings.AUDIO_OFFSET,
+    duration=settings.AUDIO_DURATION,
+    skip=0,
+):
     paths = get_paths(inp, parents=False)
     print(f"Converting files in {Fore.YELLOW}'{inp}'{Fore.RESET} to audio...")
     print(f"Images will be saved in {Fore.YELLOW}'{out_dir}'{Fore.RESET}\n")
@@ -348,15 +403,29 @@ def convert_numpy_to_audio(inp, out_dir, sr=settings.SAMPLE_RATE, n_fft=settings
             continue
         tqdm.write(f"Converting {Fore.YELLOW}'{path}'{Fore.RESET}...")
         chunks = load_arrays(path)
-        audio = spectrogram_to_audio(np.concatenate(chunks, axis=-1), sr=sr, n_fft=n_fft, hop_length=hop_length, denormalize=True)
+        audio = spectrogram_to_audio(
+            np.concatenate(chunks, axis=-1),
+            sr=sr,
+            n_fft=n_fft,
+            hop_length=hop_length,
+            denormalize=True,
+        )
         output = get_audio_output_path(path, out_dir, inp, fmt)
         sf.write(output, audio, sr)
 
 
-def convert_image_to_audio(inp, out_dir, sr=settings.SAMPLE_RATE, n_fft=settings.N_FFT,
-                           hop_length=settings.HOP_LENGTH, fmt=settings.AUDIO_FORMAT,
-                           offset=settings.AUDIO_OFFSET, duration=settings.AUDIO_DURATION,
-                           flip=settings.IMAGE_FLIP, skip=0):
+def convert_image_to_audio(
+    inp,
+    out_dir,
+    sr=settings.SAMPLE_RATE,
+    n_fft=settings.N_FFT,
+    hop_length=settings.HOP_LENGTH,
+    fmt=settings.AUDIO_FORMAT,
+    offset=settings.AUDIO_OFFSET,
+    duration=settings.AUDIO_DURATION,
+    flip=settings.IMAGE_FLIP,
+    skip=0,
+):
     paths = get_paths(inp, parents=True)
     print(f"Converting files in {Fore.YELLOW}'{inp}'{Fore.RESET} to audio...")
     print(f"Images will be saved in {Fore.YELLOW}'{out_dir}'{Fore.RESET}\n")
@@ -365,7 +434,13 @@ def convert_image_to_audio(inp, out_dir, sr=settings.SAMPLE_RATE, n_fft=settings
             continue
         tqdm.write(f"Converting {Fore.YELLOW}'{path}'{Fore.RESET}...")
         chunks = load_images(path, flip=flip)
-        audio = spectrogram_to_audio(np.concatenate(chunks, axis=-1), sr=sr, n_fft=n_fft, hop_length=hop_length, denormalize=True)
+        audio = spectrogram_to_audio(
+            np.concatenate(chunks, axis=-1),
+            sr=sr,
+            n_fft=n_fft,
+            hop_length=hop_length,
+            denormalize=True,
+        )
         output = get_audio_output_path(path, out_dir, inp, fmt)
         sf.write(output, audio, sr)
 
@@ -373,44 +448,113 @@ def convert_image_to_audio(inp, out_dir, sr=settings.SAMPLE_RATE, n_fft=settings
 # endregion
 
 # region Functions used by the `click` CLI
-def convert_to_numpy(inp, out_dir, sr=settings.SAMPLE_RATE, offset=settings.AUDIO_OFFSET,
-                     duration=settings.AUDIO_DURATION, res_type=settings.RESAMPLE_TYPE,
-                     n_fft=settings.N_FFT, hop_length=settings.HOP_LENGTH,
-                     n_mels=settings.N_MELS, chunk_size=settings.CHUNK_SIZE, truncate=settings.TRUNCATE,
-                     flip=settings.IMAGE_FLIP, skip=0):
+def convert_to_numpy(
+    inp,
+    out_dir,
+    sr=settings.SAMPLE_RATE,
+    offset=settings.AUDIO_OFFSET,
+    duration=settings.AUDIO_DURATION,
+    res_type=settings.RESAMPLE_TYPE,
+    n_fft=settings.N_FFT,
+    hop_length=settings.HOP_LENGTH,
+    n_mels=settings.N_MELS,
+    chunk_size=settings.CHUNK_SIZE,
+    truncate=settings.TRUNCATE,
+    flip=settings.IMAGE_FLIP,
+    skip=0,
+):
     dtype = get_data_type(inp, raise_exception=True)
     if dtype == DataType.AUDIO:
-        return convert_audio_to_numpy(inp, out_dir, sr=sr, offset=offset, duration=duration, res_type=res_type,
-                                      n_fft=n_fft, hop_length=hop_length, n_mels=n_mels,
-                                      chunk_size=chunk_size, truncate=truncate, skip=skip)
+        return convert_audio_to_numpy(
+            inp,
+            out_dir,
+            sr=sr,
+            offset=offset,
+            duration=duration,
+            res_type=res_type,
+            n_fft=n_fft,
+            hop_length=hop_length,
+            n_mels=n_mels,
+            chunk_size=chunk_size,
+            truncate=truncate,
+            skip=skip,
+        )
     elif dtype == DataType.IMAGE:
         return convert_image_to_numpy(inp, out_dir, flip=flip, skip=skip)
 
 
-def convert_to_image(inp, out_dir, sr=settings.SAMPLE_RATE, offset=settings.AUDIO_OFFSET,
-                     duration=settings.AUDIO_DURATION, res_type=settings.RESAMPLE_TYPE, n_fft=settings.N_FFT,
-                     hop_length=settings.HOP_LENGTH, chunk_size=settings.CHUNK_SIZE,
-                     truncate=settings.TRUNCATE, flip=settings.IMAGE_FLIP, skip=0):
+def convert_to_image(
+    inp,
+    out_dir,
+    sr=settings.SAMPLE_RATE,
+    offset=settings.AUDIO_OFFSET,
+    duration=settings.AUDIO_DURATION,
+    res_type=settings.RESAMPLE_TYPE,
+    n_fft=settings.N_FFT,
+    hop_length=settings.HOP_LENGTH,
+    chunk_size=settings.CHUNK_SIZE,
+    truncate=settings.TRUNCATE,
+    flip=settings.IMAGE_FLIP,
+    skip=0,
+):
     dtype = get_data_type(inp, raise_exception=True)
     if dtype == DataType.AUDIO:
-        return convert_audio_to_image(inp, out_dir, sr=sr, offset=offset, duration=duration, res_type=res_type,
-                                      n_fft=n_fft, hop_length=hop_length, chunk_size=chunk_size, truncate=truncate,
-                                      flip=flip, skip=skip)
+        return convert_audio_to_image(
+            inp,
+            out_dir,
+            sr=sr,
+            offset=offset,
+            duration=duration,
+            res_type=res_type,
+            n_fft=n_fft,
+            hop_length=hop_length,
+            chunk_size=chunk_size,
+            truncate=truncate,
+            flip=flip,
+            skip=skip,
+        )
     elif dtype == DataType.NUMPY:
         return convert_numpy_to_image(inp, out_dir, flip=flip, skip=skip)
 
 
-def convert_to_audio(inp, out_dir, sr=settings.SAMPLE_RATE, n_fft=settings.N_FFT,
-                     hop_length=settings.HOP_LENGTH, fmt=settings.AUDIO_FORMAT,
-                     offset=settings.AUDIO_OFFSET, duration=settings.AUDIO_DURATION,
-                     flip=settings.IMAGE_FLIP, skip=0):
+def convert_to_audio(
+    inp,
+    out_dir,
+    sr=settings.SAMPLE_RATE,
+    n_fft=settings.N_FFT,
+    hop_length=settings.HOP_LENGTH,
+    fmt=settings.AUDIO_FORMAT,
+    offset=settings.AUDIO_OFFSET,
+    duration=settings.AUDIO_DURATION,
+    flip=settings.IMAGE_FLIP,
+    skip=0,
+):
     dtype = get_data_type(inp, raise_exception=True)
     if dtype == DataType.NUMPY:
-        return convert_numpy_to_audio(inp, out_dir, sr=sr, n_fft=n_fft, hop_length=hop_length,
-                                      fmt=fmt, offset=offset,
-                                      duration=duration, skip=skip)
+        return convert_numpy_to_audio(
+            inp,
+            out_dir,
+            sr=sr,
+            n_fft=n_fft,
+            hop_length=hop_length,
+            fmt=fmt,
+            offset=offset,
+            duration=duration,
+            skip=skip,
+        )
     elif dtype == DataType.IMAGE:
-        return convert_image_to_audio(inp, out_dir, sr=sr, n_fft=n_fft, hop_length=hop_length,
-                                      fmt=fmt, offset=offset,
-                                      duration=duration, flip=flip, skip=skip)
+        return convert_image_to_audio(
+            inp,
+            out_dir,
+            sr=sr,
+            n_fft=n_fft,
+            hop_length=hop_length,
+            fmt=fmt,
+            offset=offset,
+            duration=duration,
+            flip=flip,
+            skip=skip,
+        )
+
+
 # endregion

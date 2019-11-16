@@ -16,10 +16,10 @@ tf.compat.v1.enable_eager_execution()
 
 
 def log_normal_pdf(sample, mean, logvar, raxis=1):
-    log2pi = tf.math.log(2. * np.pi)
+    log2pi = tf.math.log(2.0 * np.pi)
     return tf.reduce_sum(
-        -.5 * ((sample - mean) ** 2. * tf.exp(-logvar) + logvar + log2pi),
-        axis=raxis)
+        -0.5 * ((sample - mean) ** 2.0 * tf.exp(-logvar) + logvar + log2pi), axis=raxis
+    )
 
 
 @tf.function
@@ -30,7 +30,7 @@ def compute_loss(model, x):
 
     cross_ent = tf.nn.sigmoid_cross_entropy_with_logits(logits=x_logit, labels=x)
     logpx_z = -tf.reduce_sum(cross_ent, axis=[1, 2, 3])
-    logpz = log_normal_pdf(z, 0., 0.)
+    logpz = log_normal_pdf(z, 0.0, 0.0)
     logqz_x = log_normal_pdf(z, mean, logvar)
     return -tf.reduce_mean(logpx_z + logpz - logqz_x)
 
@@ -48,10 +48,14 @@ def visualize_model_outputs(mdl, epoch, test_input, output):
     predictions = mdl.sample(eps=test_input)
     print(f"Saving Samples Images to {output}")
     for i, pred in enumerate(predictions):
-        progress_dir = Path(settings.MODEL_WEIGHTS or datetime.now().strftime("%Y%m%d-%H%M%S")).resolve().stem
+        progress_dir = (
+            Path(settings.MODEL_WEIGHTS or datetime.now().strftime("%Y%m%d-%H%M%S"))
+            .resolve()
+            .stem
+        )
         out_dir = output.joinpath(progress_dir).joinpath(str(i + 1))
         os.makedirs(out_dir, exist_ok=True)
-        image = Image.fromarray(pred[:, :, 0].numpy(), mode='F')
+        image = Image.fromarray(pred[:, :, 0].numpy(), mode="F")
         image.save(os.path.join(out_dir, f"epoch_{epoch}.tiff"))
 
 
@@ -67,7 +71,9 @@ def vae_loss(mean, logvar, img_dims):
     def loss_fn(y_pred, y_true):
         reconstruction_loss = tf.keras.losses.binary_crossentropy(y_pred, y_true)
         reconstruction_loss *= reduce(mul, img_dims)
-        kl_loss = 1 + logvar - tf.keras.backend.square(mean) - tf.keras.backend.exp(logvar)
+        kl_loss = (
+            1 + logvar - tf.keras.backend.square(mean) - tf.keras.backend.exp(logvar)
+        )
         kl_loss = -0.5 * tf.keras.backend.sum(kl_loss, axis=-1)
         return tf.keras.backend.mean(reconstruction_loss + kl_loss)
 
@@ -91,61 +97,60 @@ batch_size = settings.BATCH_SIZE
 # endregion
 
 # region Model definition
-inputs = tf.keras.layers.Input(shape=input_shape, name='encoder_input')
+inputs = tf.keras.layers.Input(shape=input_shape, name="encoder_input")
 x = inputs
 for i in range(num_conv):
     x = tf.keras.layers.Conv2D(
         filters=min(num_filters * (i + 1), max_filters),
         kernel_size=kernel_size,
-        activation='relu',
+        activation="relu",
         strides=2,
-        padding='same',
-        activity_regularizer=tf.keras.regularizers.l1(0.01)
+        padding="same",
+        activity_regularizer=tf.keras.regularizers.l1(0.01),
     )(x)
 latent_shape = x.shape
 x = tf.keras.layers.Flatten()(x)
-z_mean = tf.keras.layers.Dense(latent_dims, name='z_mean')(x)
-z_log_var = tf.keras.layers.Dense(latent_dims, name='z_log_var')(x)
-z = tf.keras.layers.Lambda(reparameterize, output_shape=[latent_dims], name='z')([z_mean, z_log_var])
-encoder = tf.keras.Model(inputs, [z_mean, z_log_var, z], name='encoder')
+z_mean = tf.keras.layers.Dense(latent_dims, name="z_mean")(x)
+z_log_var = tf.keras.layers.Dense(latent_dims, name="z_log_var")(x)
+z = tf.keras.layers.Lambda(reparameterize, output_shape=[latent_dims], name="z")(
+    [z_mean, z_log_var]
+)
+encoder = tf.keras.Model(inputs, [z_mean, z_log_var, z], name="encoder")
 encoder.summary()
 
-latent_inputs = tf.keras.layers.Input(shape=(latent_dims,), name='z_sampled')
-x = tf.keras.layers.Dense(
-    reduce(mul, latent_shape[1:]),
-    activation='relu'
-)(latent_inputs)
+latent_inputs = tf.keras.layers.Input(shape=(latent_dims,), name="z_sampled")
+x = tf.keras.layers.Dense(reduce(mul, latent_shape[1:]), activation="relu")(
+    latent_inputs
+)
 x = tf.keras.layers.Reshape(latent_shape[1:])(x)
 for i in range(num_conv):
     x = tf.keras.layers.Conv2DTranspose(
         filters=min(num_filters * (num_conv - i), max_filters),
         kernel_size=kernel_size,
         strides=2,
-        activation='relu',
-        padding='same',
-        activity_regularizer=tf.keras.regularizers.l1(0.01)
+        activation="relu",
+        padding="same",
+        activity_regularizer=tf.keras.regularizers.l1(0.01),
     )(x)
 reconstructed = tf.keras.layers.Conv2DTranspose(
-    filters=window_size,
-    kernel_size=3,
-    strides=1,
-    padding='SAME',
-    activation='sigmoid'
+    filters=window_size, kernel_size=3, strides=1, padding="SAME", activation="sigmoid"
 )(x)
-decoder = tf.keras.Model(latent_inputs, reconstructed, name='decoder')
+decoder = tf.keras.Model(latent_inputs, reconstructed, name="decoder")
 decoder.summary()
 outputs = decoder(encoder(inputs)[2])
-vae = tf.keras.Model(inputs, outputs, name='vae')
+vae = tf.keras.Model(inputs, outputs, name="vae")
 vae.compile(
     optimizer=tf.keras.optimizers.Adam(1e-4),
     loss=vae_loss(z_mean, z_log_var, image_dims),
-    experimental_run_tf_function=False
+    experimental_run_tf_function=False,
 )
 vae.summary()
 # endregion
 
 # region Train and evaluate
-train_dataset, test_dataset = data_utils.load_numpy_dataset(settings.TRAIN_DATA_DIR, return_tuples=True)
+train_dataset, test_dataset = data_utils.load_numpy_dataset(
+    settings.TRAIN_DATA_DIR, return_tuples=True
+)
 
 start = time.time()
 num_samples = 2000
