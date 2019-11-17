@@ -14,6 +14,8 @@ from audioread.exceptions import DecodeError
 
 from . import settings
 
+imageio.plugins.freeimage.download()
+
 
 # region Data Types
 class DataType(enum.Enum):
@@ -133,7 +135,21 @@ def split_spectrogram(spec, chunk_size, truncate=True, axis=1):
     return chunks
 
 
-def load_images(path, flip=True):
+def load_image(path, flip=True):
+    """
+    Load an image as an array
+
+    Args:
+        path: The file to load image from
+        flip (bool): Whether to flip the image vertically
+    """
+    spec = imageio.imread(path)
+    if flip:
+        spec = spec[::-1]
+    return spec
+
+
+def load_images(path, flip=True, join=False):
     """
     Load a sequence of spectrogram images from a directory as arrays
 
@@ -149,13 +165,11 @@ def load_images(path, flip=True):
         for ext in EXTENSIONS[DataType.IMAGE]:
             files.extend(path.glob(f"*.{ext}"))
         files = natsorted(files)
-    chunks = [imageio.imread(file) for file in files]
-    if flip:
-        chunks = [chunk[::-1] for chunk in chunks]
-    return chunks
+    chunks = [load_image(file, flip=flip) for file in files]
+    return np.concatenate(chunks, axis=1) if join else chunks
 
 
-def load_arrays(path):
+def load_arrays(path, join=False):
     """
     Load a sequence of spectrogram arrays from a npy or npz file
 
@@ -165,7 +179,7 @@ def load_arrays(path):
     with np.load(path) as npz:
         keys = natsorted(npz.keys())
         chunks = [npz[k] for k in keys]
-        return chunks
+        return np.concatenate(chunks, axis=1) if join else chunks
 
 
 def audio_to_spectrogram(audio, normalize=False, norm_kwargs={}, **kwargs):
@@ -226,6 +240,21 @@ def save_arrays(chunks, output, compress=True):
     save(str(output), *chunks)
 
 
+def save_image(spec, output, flip=True):
+    """
+    Save an array as an image.
+
+    Args:
+        spec (np.ndarray): A array to save as an image
+        output (str): The path to save the image to
+        flip (bool): Whether to flip the array vertically
+    """
+    output = Path(output)
+    if flip:
+        spec = spec[::-1]
+    imageio.imwrite(output, spec, format="exr")
+
+
 def save_images(chunks, output, flip=True):
     """
     Save a sequence of arrays as images.
@@ -236,9 +265,7 @@ def save_images(chunks, output, flip=True):
         flip (bool): Whether to flip the images vertically
     """
     for j, chunk in enumerate(chunks):
-        if flip:
-            chunk = chunk[::-1]
-        imageio.imwrite(output.joinpath(f"{j}.exr"), chunk)
+        save_image(chunk, output.joinpath(f"{j}.exr"), flip=flip)
 
 
 # TODO: Consolidate these functions into one
@@ -402,13 +429,9 @@ def convert_numpy_to_audio(
         if i < skip:
             continue
         tqdm.write(f"Converting {Fore.YELLOW}'{path}'{Fore.RESET}...")
-        chunks = load_arrays(path)
+        spec = load_arrays(path, join=True)
         audio = spectrogram_to_audio(
-            np.concatenate(chunks, axis=-1),
-            sr=sr,
-            n_fft=n_fft,
-            hop_length=hop_length,
-            denormalize=True,
+            spec, sr=sr, n_fft=n_fft, hop_length=hop_length, denormalize=True,
         )
         output = get_audio_output_path(path, out_dir, inp, fmt)
         sf.write(output, audio, sr)
@@ -433,13 +456,9 @@ def convert_image_to_audio(
         if i < skip:
             continue
         tqdm.write(f"Converting {Fore.YELLOW}'{path}'{Fore.RESET}...")
-        chunks = load_images(path, flip=flip)
+        spec = load_images(path, flip=flip, join=True)
         audio = spectrogram_to_audio(
-            np.concatenate(chunks, axis=-1),
-            sr=sr,
-            n_fft=n_fft,
-            hop_length=hop_length,
-            denormalize=True,
+            spec, sr=sr, n_fft=n_fft, hop_length=hop_length, denormalize=True,
         )
         output = get_audio_output_path(path, out_dir, inp, fmt)
         sf.write(output, audio, sr)
